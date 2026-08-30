@@ -19,7 +19,7 @@
 
 export const CLIENT_ID = '620808857902-m0t2m88gmo97i5adlt7agfnbjl3c2p98.apps.googleusercontent.com';
 export const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-export const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive';
+export const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid';
 export const DEFAULT_PARENT_FOLDER_ID = '1-oqEfzFm_khFiNZqBRCSfpNdqdFCZ0h4';
 
 export const FOLDER_NAMES = {
@@ -39,6 +39,7 @@ export class GoogleDriveService {
     this.accessToken = null;
     this.tokenExpiresAt = 0;
     this.folderCache = null;
+    this.userInfo = null;
 
     this.initLibraries();
   }
@@ -97,9 +98,32 @@ export class GoogleDriveService {
   }
 
   /**
-   * สั่งเปิดหน้าต่าง Authorize (Sign in with Google)
+   * ดึงข้อมูลโปรไฟล์บัญชี Google จาก Token
    */
-  requestDriveAuth() {
+  async fetchUserInfo(token) {
+    const t = token || this.accessToken;
+    if (!t) return null;
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${t}` }
+      });
+      if (res.ok) {
+        const info = await res.json();
+        this.userInfo = info;
+        return info;
+      }
+    } catch (e) {
+      console.warn("[Google Drive] fetchUserInfo error:", e);
+    }
+    return null;
+  }
+
+  /**
+   * สั่งเปิดหน้าต่าง Authorize (Sign in with Google) พร้อมระบบตรวจสอบอีเมลผู้ดูแลระบบ
+   */
+  requestDriveAuth(options = {}) {
+    const { prompt = 'select_account', checkAdmin = false, allowedEmails = [] } = options;
+
     return new Promise((resolve, reject) => {
       if (!this.gisInited || !this.tokenClient) {
         this.initLibraries();
@@ -107,6 +131,23 @@ export class GoogleDriveService {
 
       this.onAuthSuccess = async (token) => {
         try {
+          const userInfo = await this.fetchUserInfo(token);
+
+          if (checkAdmin && userInfo?.email) {
+            const whitelist = (allowedEmails.length > 0 ? allowedEmails : ["peelaphat@psuwit.ac.th"])
+              .map(e => e.trim().toLowerCase());
+
+            if (!whitelist.includes(userInfo.email.trim().toLowerCase())) {
+              // อีเมลไม่ได้รับอนุญาต -> ลบ Token และยกเลิกสิทธิ์ทันที
+              this.signOut();
+              const err = new Error(`บัญชี Google "${userInfo.email}" ไม่มีสิทธิ์เข้าถึงส่วนงานผู้ดูแลระบบ\nกรุณาเข้าสู่ระบบด้วยอีเมลของคุณครูผู้ดูแลระบบเท่านั้น (${whitelist.join(', ')})`);
+              err.isUnauthorized = true;
+              err.email = userInfo.email;
+              reject(err);
+              return;
+            }
+          }
+
           const folders = await this.ensureDriveFolders();
           this.folderCache = folders;
           if (this.updateSettings) {
@@ -115,7 +156,7 @@ export class GoogleDriveService {
               gdriveFolders: folders
             });
           }
-          resolve({ token, folders });
+          resolve({ token, userInfo, folders });
         } catch (e) {
           reject(e);
         }
@@ -125,11 +166,7 @@ export class GoogleDriveService {
         reject(new Error(err.message || err.error || "เกิดข้อผิดพลาดในการยืนยันสิทธิ์ Google"));
       };
 
-      if (!this.accessToken || Date.now() >= this.tokenExpiresAt) {
-        this.tokenClient.requestAccessToken({ prompt: 'consent' });
-      } else {
-        this.tokenClient.requestAccessToken({ prompt: '' });
-      }
+      this.tokenClient.requestAccessToken({ prompt });
     });
   }
 

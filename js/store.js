@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS = {
   semester: "1",
   subjectName: "ออกแบบและวิทยาการคำนวณ 4 (ว30113)",
   scoreboardEnabled: false, // เริ่มต้นซ่อนคะแนนไว้ (อยู่ในระหว่างการพิจารณา)
-  teacherPassword: "admin", // รหัสผ่านตั้งต้นสำหรับผู้ดูแลระบบ
+  adminEmails: ["peelaphat@psuwit.ac.th", "peelapatkaewkong@gmail.com"], // อีเมลที่ได้รับอนุญาตเข้าถึงระบบผู้ดูแลระบบ
   firebaseConfig: {
     apiKey: "AIzaSyBiMR94Ys76e7QrZPlzsyngsf3FoViZi0g",
     authDomain: "project-5358a.firebaseapp.com",
@@ -265,11 +265,20 @@ export class AppStore {
       this.projects = [...SAMPLE_PROJECTS];
     }
 
-    // 3. ตรวจสอบสถานะการล็อกอินของครู
+    this.teacherUserInfo = null;
+
+    // 3. ตรวจสอบสถานะการล็อกอินของผู้ดูแลระบบ
     try {
-      const isAuth = sessionStorage.getItem(STORAGE_KEYS.AUTH);
-      if (isAuth === "true") {
-        this.isTeacherLoggedIn = true;
+      const authStr = sessionStorage.getItem(STORAGE_KEYS.AUTH);
+      if (authStr) {
+        const authData = JSON.parse(authStr);
+        if (authData && authData.loggedIn && authData.email) {
+          const allowed = (this.settings.adminEmails || ["peelaphat@psuwit.ac.th"]).map(e => e.trim().toLowerCase());
+          if (allowed.includes(authData.email.trim().toLowerCase())) {
+            this.isTeacherLoggedIn = true;
+            this.teacherUserInfo = authData.user || { email: authData.email };
+          }
+        }
       }
     } catch (e) {}
 
@@ -426,11 +435,24 @@ export class AppStore {
     return await this.updateSettings({ scoreboardEnabled: Boolean(enabled) });
   }
 
-  loginTeacher(password) {
-    if (password === this.settings.teacherPassword) {
+  isEmailAllowed(email) {
+    if (!email) return false;
+    const allowed = (this.settings.adminEmails || ["peelaphat@psuwit.ac.th"]).map(e => e.trim().toLowerCase());
+    return allowed.includes(email.trim().toLowerCase());
+  }
+
+  loginTeacherWithGoogle(userInfo) {
+    if (!userInfo || !userInfo.email) return false;
+    if (this.isEmailAllowed(userInfo.email)) {
       this.isTeacherLoggedIn = true;
+      this.teacherUserInfo = userInfo;
       try {
-        sessionStorage.setItem(STORAGE_KEYS.AUTH, "true");
+        sessionStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify({
+          loggedIn: true,
+          email: userInfo.email,
+          user: userInfo,
+          loginAt: Date.now()
+        }));
       } catch (e) {}
       this.notify();
       return true;
@@ -440,6 +462,7 @@ export class AppStore {
 
   logoutTeacher() {
     this.isTeacherLoggedIn = false;
+    this.teacherUserInfo = null;
     try {
       sessionStorage.removeItem(STORAGE_KEYS.AUTH);
     } catch (e) {}

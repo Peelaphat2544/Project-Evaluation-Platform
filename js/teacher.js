@@ -39,10 +39,10 @@ export class TeacherController {
   }
 
   bindEvents() {
-    // ฟอร์มเข้าสู่ระบบครู
-    const loginForm = document.getElementById("teacher-login-form");
-    if (loginForm) {
-      loginForm.addEventListener("submit", (e) => this.handleLogin(e));
+    // ปุ่มเข้าสู่ระบบผู้ดูแลระบบด้วย Google
+    const googleLoginBtn = document.getElementById("btn-google-admin-login");
+    if (googleLoginBtn) {
+      googleLoginBtn.addEventListener("click", () => this.handleGoogleLogin());
     }
 
     // ปุ่มออกจากระบบ
@@ -119,24 +119,66 @@ export class TeacherController {
     }
   }
 
-  handleLogin(e) {
-    e.preventDefault();
-    const passInput = document.getElementById("teacher-pass-input");
-    const pass = passInput?.value || "";
+  async handleGoogleLogin() {
+    const settings = this.store.getSettings();
+    const allowed = settings.adminEmails || ["peelaphat@psuwit.ac.th"];
 
-    if (this.store.loginTeacher(pass)) {
-      this.showToast("เข้าสู่ระบบสำหรับผู้ดูแลระบบสำเร็จ", "success");
-      if (passInput) passInput.value = "";
-      this.render();
-    } else {
-      this.showToast("รหัสผ่านไม่ถูกต้อง (ค่าเริ่มต้นคือ admin)", "error");
+    const loginBtn = document.getElementById("btn-google-admin-login");
+    const origHtml = loginBtn?.innerHTML;
+    if (loginBtn) {
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> กำลังเชื่อมต่อบัญชี Google...`;
+    }
+
+    try {
+      const res = await this.gdrive.requestDriveAuth({
+        prompt: 'select_account',
+        checkAdmin: true,
+        allowedEmails: allowed
+      });
+
+      if (res.userInfo && this.store.loginTeacherWithGoogle(res.userInfo)) {
+        this.render();
+        await Popup.alert({
+          title: "ยืนยันตัวตนสำเร็จ",
+          message: `ยินดีต้อนรับ คุณครู ${res.userInfo.name || res.userInfo.email}\nเชื่อมต่อระบบ Google Drive สำเร็จเรียบร้อยแล้ว`,
+          type: "success"
+        });
+      } else {
+        throw new Error(`บัญชีอีเมล ${res.userInfo?.email || ''} ไม่ได้รับอนุญาตให้เข้าสู่ระบบผู้ดูแลระบบ`);
+      }
+    } catch (err) {
+      console.error("Google admin login error:", err);
+      await Popup.alert({
+        title: err.isUnauthorized ? "ปฏิเสธการเข้าถึง (Access Denied)" : "ไม่สามารถเข้าสู่ระบบได้",
+        message: err.message,
+        type: "error"
+      });
+    } finally {
+      if (loginBtn) {
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = origHtml;
+      }
     }
   }
 
-  handleLogout() {
-    this.store.logoutTeacher();
-    this.showToast("ออกจากระบบเรียบร้อยแล้ว", "info");
-    this.render();
+  async handleLogout() {
+    const confirmed = await Popup.confirm({
+      title: "ยืนยันการออกจากระบบ",
+      message: "คุณต้องการออกจากระบบผู้ดูแลระบบใช่หรือไม่?",
+      type: "warning",
+      confirmText: "ออกจากระบบ",
+      cancelText: "ยกเลิก"
+    });
+
+    if (confirmed) {
+      this.store.logoutTeacher();
+      if (this.gdrive && this.gdrive.signOut) {
+        this.gdrive.signOut();
+      }
+      this.render();
+      this.showToast("ออกจากระบบเรียบร้อยแล้ว", "info");
+    }
   }
 
   render() {
@@ -152,6 +194,13 @@ export class TeacherController {
 
     if (loginSection) loginSection.classList.add("d-none");
     if (dashboardSection) dashboardSection.classList.remove("d-none");
+
+    // อัปเดตข้อมูลอีเมลแอดมินในส่วนหัว
+    const userEmailSpan = document.getElementById("admin-user-email");
+    if (userEmailSpan) {
+      const email = this.store.teacherUserInfo?.email || "peelaphat@psuwit.ac.th";
+      userEmailSpan.textContent = email;
+    }
 
     const settings = this.store.getSettings();
     const projects = this.store.getProjects();
@@ -754,14 +803,16 @@ export class TeacherController {
           <div class="row g-3">
             <div class="col-md-6">
               <div class="form-group">
-                <label class="font-bold"><i class="fas fa-key text-primary"></i> รหัสผ่านผู้ดูแลระบบ (สำหรับเข้าสู่ระบบ)</label>
-                <input type="password" id="setting-teacher-pass" class="form-control" value="${this.escapeHtml(settings.teacherPassword || 'admin')}">
+                <label class="font-bold"><i class="fas fa-user-shield text-primary"></i> อีเมลผู้ดูแลระบบ (คั่นด้วยจุลภาค ,)</label>
+                <input type="text" id="setting-admin-emails" class="form-control font-mono text-sm" value="${this.escapeHtml((settings.adminEmails || ['peelaphat@psuwit.ac.th']).join(', '))}" placeholder="peelaphat@psuwit.ac.th">
+                <small class="text-muted text-xs">ระบุบัญชี Google ที่ได้รับสิทธิ์เข้าถึงระบบผู้ดูแลระบบ</small>
               </div>
             </div>
             <div class="col-md-6">
               <div class="form-group">
                 <label class="font-bold"><i class="fas fa-book text-primary"></i> ชื่อวิชา / กิจกรรม</label>
                 <input type="text" id="setting-subject-name" class="form-control" value="${this.escapeHtml(settings.subjectName || '')}">
+                <small class="text-muted text-xs">ชื่อรายวิชาที่เป็นทางการ</small>
               </div>
             </div>
           </div>
@@ -791,9 +842,17 @@ export class TeacherController {
       const statusEl = modal.querySelector("#gdrive-oauth-status");
       if (statusEl) statusEl.innerHTML = `<span class="text-primary"><i class="fas fa-spinner fa-spin"></i> กำลังเปิดหน้าต่าง Google Login...</span>`;
       try {
-        const result = await this.gdrive.requestDriveAuth();
+        const allowed = (modal.querySelector("#setting-admin-emails")?.value || "")
+          .split(",").map(e => e.trim()).filter(Boolean);
+
+        const result = await this.gdrive.requestDriveAuth({
+          prompt: 'select_account',
+          checkAdmin: true,
+          allowedEmails: allowed.length > 0 ? allowed : ["peelaphat@psuwit.ac.th"]
+        });
+
         if (statusEl) {
-          statusEl.innerHTML = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> เชื่อมต่อและสร้าง 3 โฟลเดอร์ใน Google Drive สำเร็จ!</span>`;
+          statusEl.innerHTML = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> เชื่อมต่อ (${result.userInfo?.email || 'สำเร็จ'})</span>`;
         }
         this.showToast("เชื่อมต่อ Google Drive ของคุณครูสำเร็จเรียบร้อยแล้ว", "success");
       } catch (err) {
@@ -805,7 +864,8 @@ export class TeacherController {
 
     // บันทึกการตั้งค่า
     modal.querySelector("#btn-save-settings")?.addEventListener("click", async () => {
-      const teacherPass = modal.querySelector("#setting-teacher-pass")?.value.trim() || "admin";
+      const adminEmailsRaw = modal.querySelector("#setting-admin-emails")?.value || "";
+      const adminEmails = adminEmailsRaw.split(",").map(e => e.trim()).filter(Boolean);
       const subjectName = modal.querySelector("#setting-subject-name")?.value.trim() || "";
       const firebaseRaw = modal.querySelector("#setting-firebase-config")?.value.trim();
 
@@ -820,7 +880,7 @@ export class TeacherController {
       }
 
       await this.store.updateSettings({
-        teacherPassword: teacherPass,
+        adminEmails: adminEmails.length > 0 ? adminEmails : ["peelaphat@psuwit.ac.th"],
         subjectName: subjectName,
         firebaseConfig: fbConfig
       });
