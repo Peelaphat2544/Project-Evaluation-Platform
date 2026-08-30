@@ -41,6 +41,21 @@ export class GoogleDriveService {
     this.folderCache = null;
     this.userInfo = null;
 
+    // กู้คืน Token ที่บันทึกไว้ใน LocalStorage
+    try {
+      const cachedToken = localStorage.getItem('project_eval_gdrive_token');
+      const cachedExp = localStorage.getItem('project_eval_gdrive_token_exp');
+      const cachedFolders = localStorage.getItem('project_eval_gdrive_folders');
+      const cachedUser = localStorage.getItem('project_eval_gdrive_user');
+      if (cachedToken && cachedExp && Date.now() < parseInt(cachedExp, 10)) {
+        this.accessToken = cachedToken;
+        this.tokenExpiresAt = parseInt(cachedExp, 10);
+        if (cachedFolders) this.folderCache = JSON.parse(cachedFolders);
+        if (cachedUser) this.userInfo = JSON.parse(cachedUser);
+        console.log("[Google Drive] กู้คืน Active OAuth Token จาก LocalStorage สำเร็จ!");
+      }
+    } catch (e) {}
+
     this.initLibraries();
   }
 
@@ -56,6 +71,9 @@ export class GoogleDriveService {
               discoveryDocs: [DISCOVERY_DOC],
             });
             this.gapiInited = true;
+            if (this.accessToken && window.gapi.client) {
+              window.gapi.client.setToken({ access_token: this.accessToken });
+            }
             console.log("[GAPI] Drive Client พร้อมทำงานแล้ว");
           } catch (e) {
             console.warn("[GAPI Init Warning]:", e);
@@ -82,6 +100,18 @@ export class GoogleDriveService {
             if (window.gapi?.client) {
               window.gapi.client.setToken(tokenResponse);
             }
+
+            // บันทึก Token ลง LocalStorage และส่งให้ Server
+            try {
+              localStorage.setItem('project_eval_gdrive_token', this.accessToken);
+              localStorage.setItem('project_eval_gdrive_token_exp', String(this.tokenExpiresAt));
+              fetch('/api/auth/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accessToken: this.accessToken, expiresIn: tokenResponse.expires_in })
+              }).catch(() => {});
+            } catch (e) {}
+
             console.log("[GIS] Google Drive Token ได้รับสำเร็จ!");
             if (this.onAuthSuccess) this.onAuthSuccess(this.accessToken);
           }
@@ -376,7 +406,53 @@ export class GoogleDriveService {
     }
 
     // =========================================================================
-    // วิธีที่ 2: Local Storage DataURL Fallback
+    // วิธีที่ 2: อัปโหลดผ่านเซิร์ฟเวอร์ Backend (/api/upload)
+    // =========================================================================
+    try {
+      if (onProgress) onProgress({ status: 'uploading', message: `กำลังส่งไฟล์ "${formattedFileName}" ผ่านเซิร์ฟเวอร์ไปยัง Google Drive...` });
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', type);
+      formData.append('projectName', projectName);
+      formData.append('studentName', studentName);
+      formData.append('studentId', studentId);
+      formData.append('parentFolderId', DEFAULT_PARENT_FOLDER_ID);
+
+      const serverRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (serverRes.ok) {
+        const serverData = await serverRes.json();
+        if (serverData.status === 'success' && serverData.fileId) {
+          if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${serverData.folderName || folderNameThai}" สำเร็จ!` });
+
+          return {
+            success: true,
+            isLocalFallback: false,
+            fileId: serverData.fileId,
+            fileName: serverData.fileName || formattedFileName,
+            folderName: serverData.folderName || folderNameThai,
+            viewUrl: serverData.viewUrl,
+            directViewUrl: serverData.directViewUrl || serverData.viewUrl,
+            previewUrl: serverData.previewUrl || serverData.viewUrl,
+            downloadUrl: serverData.downloadUrl,
+            thumbnailLink: serverData.thumbnailLink || serverData.viewUrl,
+            originalName: file.name,
+            size: file.size,
+            mimeType: file.type,
+            uploadedAt: new Date().toISOString()
+          };
+        }
+      }
+    } catch (serverErr) {
+      console.warn("[Backend Upload Warning, trying local storage fallback]:", serverErr);
+    }
+
+    // =========================================================================
+    // วิธีที่ 3: Local Storage DataURL Fallback
     // =========================================================================
     const { dataUrl } = await this.fileToBase64(file);
     if (onProgress) onProgress({ status: 'done', message: `บันทึกไฟล์สำเร็จในเครื่อง (Local Storage)` });

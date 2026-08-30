@@ -50,6 +50,20 @@ const SCOPES = [
 
 let driveClient = null;
 let serviceAccountEmail = null;
+let teacherAccessToken = null;
+let teacherTokenExpiry = 0;
+
+const TOKEN_CACHE_FILE = path.join(__dirname, '.token_cache.json');
+try {
+  if (fs.existsSync(TOKEN_CACHE_FILE)) {
+    const cached = JSON.parse(fs.readFileSync(TOKEN_CACHE_FILE, 'utf8'));
+    if (cached.accessToken && cached.tokenExpiry > Date.now()) {
+      teacherAccessToken = cached.accessToken;
+      teacherTokenExpiry = cached.tokenExpiry;
+      console.log(`[Google Drive] โหลด Token ของครูจาก Cache สำเร็จ (หมดอายุ: ${new Date(teacherTokenExpiry).toLocaleTimeString()})`);
+    }
+  }
+} catch (e) {}
 
 // Initializing Google Auth with Service Account
 try {
@@ -71,6 +85,20 @@ try {
   console.error('[Google Drive Auth Error]:', err.message);
 }
 
+/**
+ * ดึง Drive Client ที่พร้อมใช้งาน (OAuth Token ของครู หรือ Service Account)
+ */
+function getActiveDriveClient() {
+  if (teacherAccessToken && Date.now() < teacherTokenExpiry) {
+    const oauth2Client = new google.auth.OAuth2(
+      "620808857902-m0t2m88gmo97i5adlt7agfnbjl3c2p98.apps.googleusercontent.com"
+    );
+    oauth2Client.setCredentials({ access_token: teacherAccessToken });
+    return google.drive({ version: 'v3', auth: oauth2Client });
+  }
+  return driveClient;
+}
+
 const DEFAULT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || "1-oqEfzFm_khFiNZqBRCSfpNdqdFCZ0h4";
 
 // โฟลเดอร์หลักและโฟลเดอร์ย่อย
@@ -88,7 +116,8 @@ const folderCache = {};
  * ฟังก์ชันค้นหาหรือสร้างโฟลเดอร์บน Google Drive
  */
 async function getOrCreateFolder(folderName, parentFolderId = null) {
-  if (!driveClient) throw new Error('Google Drive Client ยังไม่ได้เชื่อมต่อ');
+  const activeDrive = getActiveDriveClient();
+  if (!activeDrive) throw new Error('Google Drive Client ยังไม่ได้เชื่อมต่อ');
 
   const cacheKey = `${folderName}_${parentFolderId || 'root'}`;
   if (folderCache[cacheKey]) return folderCache[cacheKey];
@@ -99,7 +128,7 @@ async function getOrCreateFolder(folderName, parentFolderId = null) {
   }
 
   try {
-    const listRes = await driveClient.files.list({
+    const listRes = await activeDrive.files.list({
       q: query,
       fields: 'files(id, name)',
       spaces: 'drive',
@@ -123,7 +152,7 @@ async function getOrCreateFolder(folderName, parentFolderId = null) {
     parents: parentFolderId ? [parentFolderId] : []
   };
 
-  const createRes = await driveClient.files.create({
+  const createRes = await activeDrive.files.create({
     requestBody: fileMetadata,
     fields: 'id, name',
     supportsAllDrives: true
@@ -134,7 +163,7 @@ async function getOrCreateFolder(folderName, parentFolderId = null) {
 
   // ตั้งสิทธิ์ให้อ่านได้
   try {
-    await driveClient.permissions.create({
+    await activeDrive.permissions.create({
       fileId: newId,
       requestBody: { role: 'reader', type: 'anyone' },
       supportsAllDrives: true
@@ -196,6 +225,25 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// Token Synchronization Endpoint
+app.post('/api/auth/token', (req, res) => {
+  const { accessToken, expiresIn, email } = req.body || {};
+  if (accessToken) {
+    teacherAccessToken = accessToken;
+    teacherTokenExpiry = Date.now() + (parseInt(expiresIn, 10) || 3600) * 1000;
+    console.log(`[Server] บันทึก OAuth Token ของครู (${email || 'peelaphat@psuwit.ac.th'}) เรียบร้อย`);
+    try {
+      fs.writeFileSync(TOKEN_CACHE_FILE, JSON.stringify({
+        accessToken: teacherAccessToken,
+        tokenExpiry: teacherTokenExpiry,
+        email: email || 'peelaphat@psuwit.ac.th'
+      }));
+    } catch (e) {}
+    return res.json({ status: 'success', message: 'Token cached successfully' });
+  }
+  res.status(400).json({ status: 'error', message: 'No accessToken provided' });
+});
+
 /**
  * API อัปโหลดไฟล์เข้า Google Drive (รองรับทั้ง /api/upload และ /upload)
  */
@@ -206,8 +254,9 @@ const uploadHandler = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'ไม่พบไฟล์ที่ส่งมา (No file attached)' });
     }
 
-    if (!driveClient) {
-      throw new Error('Google Drive API ยังไม่ได้เชื่อมต่อ กรุณาตรวจสอบไฟล์ Service Account JSON');
+    const activeDrive = getActiveDriveClient();
+    if (!activeDrive) {
+      throw new Error('Google Drive API ยังไม่ได้เชื่อมต่อ กรุณาเข้าสู่ระบบผู้ดูแลระบบด้วย Google เพื่อเปิดใช้งานไดรฟ์');
     }
 
     const body = req.body || {};
@@ -265,7 +314,7 @@ const uploadHandler = async (req, res) => {
       requestBody.parents = [targetFolderId];
     }
 
-    const createResponse = await driveClient.files.create({
+    const createResponse = await activeDrive.files.create({
       requestBody: requestBody,
       media: {
         mimeType: file.mimetype || 'application/octet-stream',
@@ -279,7 +328,7 @@ const uploadHandler = async (req, res) => {
 
     // 5. ตั้งสิทธิ์ให้ทุกคนที่มีลิงก์เข้าถึงแบบ Reader
     try {
-      await driveClient.permissions.create({
+      await activeDrive.permissions.create({
         fileId: fileId,
         requestBody: { role: 'reader', type: 'anyone' },
         supportsAllDrives: true
