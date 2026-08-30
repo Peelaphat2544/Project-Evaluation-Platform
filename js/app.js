@@ -225,14 +225,11 @@ class App {
       const isGraded = Boolean(p.status === "evaluated" && p.evaluation && p.evaluation.totalScore !== undefined);
       const settings = this.store.getSettings();
       const isScoreboardOpen = Boolean(settings.scoreboardEnabled);
-      const isTeacher = this.store.isTeacherLoggedIn;
 
       let statusBadge = `<span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> อยู่ในระหว่างการพิจารณา</span>`;
       if (isGraded) {
         if (isScoreboardOpen) {
           statusBadge = `<span class="badge badge-success"><i class="fas fa-star"></i> ประเมินแล้ว (${p.evaluation.totalScore}/20)</span>`;
-        } else if (isTeacher) {
-          statusBadge = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> ประเมินแล้ว (${p.evaluation.totalScore}/20)</span>`;
         } else {
           statusBadge = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> ประเมินแล้ว</span>`;
         }
@@ -365,10 +362,9 @@ class App {
     if (!project) return;
 
     const settings = this.store.getSettings();
-    const isTeacher = this.store.isTeacherLoggedIn;
     const isScoreboardOpen = Boolean(settings.scoreboardEnabled);
     const isGraded = Boolean(project.status === "evaluated" && project.evaluation && project.evaluation.totalScore !== undefined);
-    const canSeeScore = Boolean(isGraded && (isScoreboardOpen || isTeacher));
+    const canSeeScore = Boolean(isGraded && isScoreboardOpen);
     const evalData = project.evaluation;
 
     let modal = document.getElementById("modal-project-detail");
@@ -460,7 +456,7 @@ class App {
 
           <!-- ผลการประเมินและคะแนน (แสดงผลคะแนนในหน้านักเรียน) -->
           <div class="detail-section">
-            <h5 class="section-heading"><i class="fas fa-award text-warning"></i> ผลการประเมินคะแนน (Rubric 20 คะแนน)</h5>
+            <h5 class="section-heading"><i class="fas fa-award text-warning"></i> ${canSeeScore ? 'ผลการประเมินคะแนน (Rubric 20 คะแนน)' : 'สถานะผลการประเมิน'}</h5>
             ${canSeeScore ? `
               <div class="score-report-card">
                 <div class="d-flex justify-content-between align-items-center mb-3">

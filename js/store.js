@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS = {
   academicYear: "2569",
   semester: "1",
   subjectName: "ออกแบบและวิทยาการคำนวณ 4 (ว30113)",
-  scoreboardEnabled: true, // เปิดการแสดงผลคะแนนในหน้านักเรียน
+  scoreboardEnabled: false, // ปิดการแสดงผลคะแนนในหน้านักเรียนเป็นค่าเริ่มต้น (จนกว่าครูจะเปิดสวิตช์)
   adminEmails: ["peelaphat@psuwit.ac.th", "peelapatkaewkong@gmail.com"], // อีเมลที่ได้รับอนุญาตเข้าถึงระบบผู้ดูแลระบบ
   firebaseConfig: {
     apiKey: "AIzaSyBiMR94Ys76e7QrZPlzsyngsf3FoViZi0g",
