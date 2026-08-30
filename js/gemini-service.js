@@ -5,7 +5,7 @@
 
 export class GeminiService {
   constructor() {
-    this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+    this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent';
     this.apiKey = localStorage.getItem('gemini_api_key') || '';
   }
 
