@@ -158,7 +158,48 @@
 .badge-primary { background: var(--primary-light); color: var(--primary); }
 .badge-success { background: var(--success-light); color: var(--success); }
 .badge-warning { background: var(--warning-light); color: #b45309; }
-.badge-danger { background: var(--danger-light); color: var(--danger); }
+.badge-danger {
+  background: var(--danger-color);
+  color: white;
+}
+
+/* =========================================================================
+   Gemini Evaluation Specific Utilities
+   ========================================================================= */
+
+.bg-success-subtle {
+  background-color: #d1e7dd;
+  color: #0f5132;
+}
+
+.bg-danger-subtle {
+  background-color: #f8d7da;
+  color: #842029;
+}
+
+.bg-info-subtle {
+  background-color: #cff4fc;
+  color: #055160;
+}
+
+.border-primary-subtle {
+  border-color: #cfe2ff !important;
+}
+
+.spinner {
+  display: inline-block;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0.25em solid rgba(0, 0, 0, 0.1);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spinner-border .75s linear infinite;
+}
+
+@keyframes spinner-border {
+  to { transform: rotate(360deg); }
+}
+
 .badge-info { background: #e0f2fe; color: #0284c7; }
 .badge-light { background: #f1f5f9; color: var(--text-muted); }
 .badge-dark { background: #0f172a; color: white; }

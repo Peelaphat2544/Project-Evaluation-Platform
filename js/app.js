@@ -10,6 +10,7 @@ import { ScoreboardController } from "./scoreboard.js";
 import { TeacherController } from "./teacher.js";
 import { Popup } from "./popup-util.js";
 import { RUBRIC_CATEGORIES } from "./rubric-data.js";
+import { GeminiService } from "./gemini-service.js";
 
 class App {
   constructor() {
@@ -25,6 +26,7 @@ class App {
     this.scoreboardController = null;
     this.teacherController = null;
     this.radarChartInstance = null;
+    this.geminiService = new GeminiService();
 
     this.init();
   }
@@ -35,9 +37,9 @@ class App {
     this.bindGlobalEvents();
     this.updateHeader();
 
-    // จัดการเริ่มต้นเปิดหน้าตาม Hash (เช่น #showcase, #submit, #scoreboard, #teacher)
+    // จัดการเริ่มต้นเปิดหน้าตาม Hash (เช่น #showcase, #submit, #scoreboard, #teacher, #gemini-eval)
     const initialHash = (window.location.hash || "").replace("#", "").trim();
-    if (initialHash && ["showcase", "submit", "scoreboard", "teacher"].includes(initialHash)) {
+    if (initialHash && ["showcase", "submit", "scoreboard", "teacher", "gemini-eval"].includes(initialHash)) {
       this.switchView(initialHash);
     } else {
       this.switchView("showcase");
@@ -86,10 +88,12 @@ class App {
       });
     });
 
+    this.bindGeminiEvents();
+
     // ฟังการเปลี่ยนแปลงของ URL Hash (เช่น กดปุ่ม Back/Forward บน Browser)
     window.addEventListener("hashchange", () => {
       const hash = (window.location.hash || "").replace("#", "").trim();
-      if (hash && ["showcase", "submit", "scoreboard", "teacher"].includes(hash) && hash !== this.currentView) {
+      if (hash && ["showcase", "submit", "scoreboard", "teacher", "gemini-eval"].includes(hash) && hash !== this.currentView) {
         this.switchView(hash);
       }
     });
@@ -655,7 +659,94 @@ class App {
 
   // ===================== TOAST NOTIFICATIONS =====================
 
-  showToast(message, type = "info") {
+  bindGeminiEvents() {
+    const apiKeyInput = document.getElementById("gemini-api-key");
+    const geminiForm = document.getElementById("gemini-eval-form");
+    const loadingState = document.getElementById("gemini-loading");
+    const resultBox = document.getElementById("gemini-result-box");
+
+    // Load saved API Key
+    if (apiKeyInput && this.geminiService.getApiKey()) {
+      apiKeyInput.value = this.geminiService.getApiKey();
+    }
+
+    if (apiKeyInput) {
+      apiKeyInput.addEventListener("change", (e) => {
+        this.geminiService.setApiKey(e.target.value.trim());
+      });
+    }
+
+    if (geminiForm) {
+      geminiForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        // Save API key explicitly on submit if changed
+        if (apiKeyInput.value.trim()) {
+          this.geminiService.setApiKey(apiKeyInput.value.trim());
+        }
+
+        const title = document.getElementById("gemini-proj-title").value.trim();
+        const type = document.getElementById("gemini-proj-type").value;
+        const fileInput = document.getElementById("gemini-files");
+        const files = fileInput.files;
+
+        if (!this.geminiService.getApiKey()) {
+          this.showToast("กรุณาระบุ Gemini API Key ก่อน", "danger");
+          apiKeyInput.focus();
+          return;
+        }
+
+        if (files.length === 0) {
+          this.showToast("กรุณาเลือกไฟล์ (PDF) อย่างน้อย 1 ไฟล์", "danger");
+          return;
+        }
+
+        // Validate PDF extension
+        for (let i = 0; i < files.length; i++) {
+          if (files[i].type !== 'application/pdf' && !files[i].name.toLowerCase().endsWith('.pdf')) {
+            this.showToast("กรุณาอัปโหลดไฟล์เป็น PDF เท่านั้นเพื่อให้ AI อ่านได้แม่นยำที่สุด", "warning");
+            return;
+          }
+        }
+
+        geminiForm.classList.add("d-none");
+        resultBox.classList.add("d-none");
+        loadingState.classList.remove("d-none");
+
+        try {
+          const result = await this.geminiService.evaluateProject(title, type, files);
+          
+          // Display Results
+          document.getElementById("gemini-total-score").textContent = `${result.total_score || 0} / 20 คะแนน`;
+          document.getElementById("g-score-product").textContent = result.scores?.product || "-";
+          document.getElementById("g-score-impact").textContent = result.scores?.impact || "-";
+          document.getElementById("g-score-report").textContent = result.scores?.report || "-";
+          document.getElementById("g-score-presentation").textContent = result.scores?.presentation || "-";
+          document.getElementById("g-score-teamwork").textContent = result.scores?.teamwork || "-";
+
+          document.getElementById("g-feedback-positive").textContent = result.feedback_positive || "-";
+          document.getElementById("g-feedback-negative").textContent = result.feedback_negative || "-";
+          document.getElementById("g-feedback-improve").textContent = result.improvement_suggestions || "-";
+
+          loadingState.classList.add("d-none");
+          geminiForm.classList.remove("d-none");
+          resultBox.classList.remove("d-none");
+          
+          // Scroll to result
+          resultBox.scrollIntoView({ behavior: "smooth" });
+          
+          this.showToast("การประเมินเสร็จสมบูรณ์", "success");
+        } catch (error) {
+          console.error(error);
+          loadingState.classList.add("d-none");
+          geminiForm.classList.remove("d-none");
+          this.showToast(`เกิดข้อผิดพลาด: ${error.message}`, "danger");
+        }
+      });
+    }
+  }
+
+  showToast(message, type = "success") {
     let container = document.getElementById("toast-container");
     if (!container) {
       container = document.createElement("div");

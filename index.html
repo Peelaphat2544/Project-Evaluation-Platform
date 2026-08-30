@@ -62,6 +62,11 @@
             </a>
           </li>
           <li>
+            <a href="#" class="nav-link" data-view="gemini-eval">
+              <i class="fas fa-robot"></i> <span>ตรวจด้วย Gemini</span>
+            </a>
+          </li>
+          <li>
             <a href="#" class="nav-link" data-view="scoreboard">
               <i class="fas fa-award"></i> <span>ประกาศผลการประเมิน</span>
             </a>
@@ -521,6 +526,126 @@
         </div>
       </div>
     </section>
+
+    <!-- VIEW 5: GEMINI EVALUATION (หน้าตรวจโครงงานด้วย Gemini AI) -->
+    <section id="view-gemini-eval" class="view-section">
+      <div class="container py-4 py-md-5" style="max-width: 900px;">
+        <div class="text-center mb-4">
+          <h2 class="text-gradient mb-2">
+            <i class="fas fa-robot"></i> ผู้ช่วยตรวจโครงงานอัจฉริยะ
+          </h2>
+          <p class="text-muted text-sm">
+            อัปโหลดไฟล์เล่มรายงานและสไลด์นำเสนอ (PDF) เพื่อให้ Gemini AI ช่วยวิเคราะห์ ให้คะแนนตามเกณฑ์ 20 คะแนน และข้อเสนอแนะ
+          </p>
+        </div>
+
+        <div class="card p-4 mb-4 form-card-box border-primary-subtle">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="text-primary m-0"><i class="fas fa-key"></i> การตั้งค่า Gemini API</h5>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-sm text-decoration-underline"><i class="fas fa-external-link-alt"></i> รับ API Key ฟรี</a>
+          </div>
+          <div class="form-group mb-0">
+            <input type="password" id="gemini-api-key" class="form-control" placeholder="วาง API Key ของคุณที่นี่ (AIzaSy...)">
+            <small class="form-text text-muted">API Key จะถูกบันทึกไว้ในเบราว์เซอร์นี้อย่างปลอดภัย ไม่ถูกส่งไปยังเซิร์ฟเวอร์อื่นนอกจาก Google</small>
+          </div>
+        </div>
+
+        <form id="gemini-eval-form" class="animate-fade-in">
+          <div class="card p-3 p-md-4 mb-4 form-card-box">
+            <h5 class="mb-3"><i class="fas fa-file-pdf"></i> ข้อมูลโครงงานที่ต้องการตรวจ</h5>
+            
+            <div class="form-group">
+              <label>ชื่อโครงงาน <span class="required">*</span></label>
+              <input type="text" id="gemini-proj-title" class="form-control" placeholder="พิมพ์ชื่อโครงงาน..." required>
+            </div>
+
+            <div class="form-group">
+              <label>ประเภทโครงงาน <span class="required">*</span></label>
+              <select id="gemini-proj-type" class="form-control" required>
+                <option value="invention">สิ่งประดิษฐ์ (Hardware / Device / STEM)</option>
+                <option value="software">แพลตฟอร์ม / ซอฟต์แวร์ (Web / Mobile / AI)</option>
+              </select>
+            </div>
+
+            <div class="form-group mt-4">
+              <label>อัปโหลดไฟล์รายงานและสไลด์ (บังคับเป็น .pdf เท่านั้น เพื่อความแม่นยำ) <span class="required">*</span></label>
+              <input type="file" id="gemini-files" class="form-control" accept=".pdf" multiple required>
+              <small class="form-text text-muted mt-1">อัปโหลดได้หลายไฟล์พร้อมกัน (เลือกไฟล์แล้วลากลง หรือกด Ctrl ค้างไว้ตอนเลือก)</small>
+            </div>
+          </div>
+
+          <div class="text-center">
+            <button type="submit" id="btn-start-gemini" class="btn btn-primary btn-lg w-100-mobile">
+              <i class="fas fa-magic"></i> เริ่มตรวจด้วย Gemini AI
+            </button>
+          </div>
+        </form>
+
+        <!-- Loading State -->
+        <div id="gemini-loading" class="text-center py-5 d-none">
+          <div class="spinner mb-3" style="border-top-color: var(--primary-color);"></div>
+          <h5 class="text-primary">ศาสตราจารย์ Gemini กำลังวิเคราะห์ผลงาน...</h5>
+          <p class="text-muted text-sm">กระบวนการนี้อาจใช้เวลา 10-30 วินาที ขึ้นอยู่กับขนาดและจำนวนหน้าของไฟล์ PDF</p>
+        </div>
+
+        <!-- Result Box -->
+        <div id="gemini-result-box" class="mt-5 d-none animate-fade-in">
+          <div class="card border-primary shadow-sm">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+              <h5 class="m-0"><i class="fas fa-clipboard-check"></i> ผลการประเมินโครงงาน</h5>
+              <div class="badge bg-white text-primary" style="font-size: 1.1rem;" id="gemini-total-score">
+                0 / 20 คะแนน
+              </div>
+            </div>
+            <div class="card-body p-4">
+              <!-- Score Breakdown -->
+              <h6 class="mb-3 text-secondary border-bottom pb-2">รายละเอียดคะแนนรายด้าน</h6>
+              <div class="row text-center mb-4">
+                <div class="col-4 col-md-2 mb-2">
+                  <div class="text-xs text-muted mb-1">ผลผลิต/เทคโนฯ</div>
+                  <div class="h4 text-primary" id="g-score-product">-</div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                  <div class="text-xs text-muted mb-1">แก้ปัญหา/Impact</div>
+                  <div class="h4 text-primary" id="g-score-impact">-</div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                  <div class="text-xs text-muted mb-1">เล่มรายงาน</div>
+                  <div class="h4 text-primary" id="g-score-report">-</div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                  <div class="text-xs text-muted mb-1">การนำเสนอ</div>
+                  <div class="h4 text-primary" id="g-score-presentation">-</div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                  <div class="text-xs text-muted mb-1">การทำงานเป็นทีม</div>
+                  <div class="h4 text-primary" id="g-score-teamwork">-</div>
+                </div>
+              </div>
+
+              <!-- Feedback -->
+              <div class="mb-4">
+                <h6 class="text-success mb-2"><i class="fas fa-check-circle"></i> ข้อเสนอแนะเชิงบวก (จุดเด่น)</h6>
+                <div class="p-3 bg-success-subtle rounded text-sm text-dark" id="g-feedback-positive" style="line-height: 1.6;">-</div>
+              </div>
+
+              <div class="mb-4">
+                <h6 class="text-danger mb-2"><i class="fas fa-exclamation-circle"></i> สิ่งที่ควรปรับปรุง (ข้อบกพร่อง)</h6>
+                <div class="p-3 bg-danger-subtle rounded text-sm text-dark" id="g-feedback-negative" style="line-height: 1.6;">-</div>
+              </div>
+
+              <div>
+                <h6 class="text-info mb-2"><i class="fas fa-lightbulb"></i> คำแนะนำในการพัฒนาต่อยอด (Growth)</h6>
+                <div class="p-3 bg-info-subtle rounded text-sm text-dark" id="g-feedback-improve" style="line-height: 1.6;">-</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
 
   <!-- ===================== FOOTER ===================== -->
