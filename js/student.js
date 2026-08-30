@@ -543,12 +543,14 @@ export class StudentController {
   }
 
   loadProjectForEdit(project) {
+    if (!project) return;
     this.currentEditingProjectId = project.id;
     this.existingProject = project;
 
     const titleInput = document.getElementById("proj-title");
     const titleEnInput = document.getElementById("proj-title-en");
     const typeSelect = document.getElementById("proj-type");
+    const descInput = document.getElementById("proj-desc");
     const gradeSelect = document.getElementById("proj-grade-level");
     const classInput = document.getElementById("proj-classroom");
     const demoInput = document.getElementById("proj-demo-url");
@@ -571,7 +573,7 @@ export class StudentController {
     if (demoInput) demoInput.value = project.demoUrl || "";
     if (githubInput) githubInput.value = project.githubUrl || "";
 
-    // ใส่ไฟล์เดิม
+    // แสดงไฟล์เล่มรายงานเดิม
     const reportPreview = document.getElementById("report-file-preview");
     if (reportPreview && project.reportFile) {
       reportPreview.innerHTML = `
@@ -579,12 +581,13 @@ export class StudentController {
           <i class="fas fa-file-pdf text-danger"></i>
           <div class="file-info">
             <span class="file-name">${this.escapeHtml(project.reportFile.fileName || 'ไฟล์เล่มรายงานเดิม')}</span>
-            <span class="file-size text-success"><i class="fab fa-google-drive"></i> อยู่บน Google Drive แล้ว</span>
+            <span class="file-size text-success"><i class="fab fa-google-drive"></i> อยู่บน Google Drive แล้ว (ไม่ต้องเลือกใหม่หากไม่เปลี่ยน)</span>
           </div>
         </div>
       `;
     }
 
+    // แสดงไฟล์สื่อนำเสนอเดิม
     const slidePreview = document.getElementById("slide-file-preview");
     if (slidePreview && project.slideFile) {
       slidePreview.innerHTML = `
@@ -592,21 +595,31 @@ export class StudentController {
           <i class="fas fa-file-powerpoint text-warning"></i>
           <div class="file-info">
             <span class="file-name">${this.escapeHtml(project.slideFile.fileName || 'ไฟล์สื่อนำเสนอเดิม')}</span>
-            <span class="file-size text-success"><i class="fab fa-google-drive"></i> อยู่บน Google Drive แล้ว</span>
+            <span class="file-size text-success"><i class="fab fa-google-drive"></i> อยู่บน Google Drive แล้ว (ไม่ต้องเลือกใหม่หากไม่เปลี่ยน)</span>
           </div>
         </div>
       `;
     }
 
-    // ล้างและใส่สมาชิก
+    // โหลดสมาชิกทั้งหมดเดิมครบถ้วน (ชื่อ, รหัส, ห้อง, เลขที่, รูปถ่าย)
     const container = document.getElementById("members-container");
     if (container) {
       container.innerHTML = "";
       this.memberPhotos = {};
-      (project.members || []).forEach(m => this.addMemberRow(m));
+      if (project.members && project.members.length > 0) {
+        project.members.forEach(m => this.addMemberRow(m));
+      } else {
+        this.addMemberRow();
+      }
     }
 
-    this.showToast("โหลดข้อมูลโครงงานสำหรับแก้ไขเรียบร้อย", "info");
+    // เลื่อนหน้าจอขึ้นมาที่หัวข้อฟอร์มแก้ไข
+    setTimeout(() => {
+      const heading = document.getElementById("form-heading-title") || document.getElementById("student-project-form");
+      if (heading) heading.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+
+    this.showToast("โหลดข้อมูลเดิมของโครงงานเรียบร้อยแล้ว", "info");
   }
 
   resetForm() {
