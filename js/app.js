@@ -32,8 +32,15 @@ class App {
   init() {
     this.initControllers();
     this.bindGlobalEvents();
-    this.renderShowcase();
     this.updateHeader();
+
+    // จัดการเริ่มต้นเปิดหน้าตาม Hash (เช่น #showcase, #submit, #scoreboard, #teacher)
+    const initialHash = (window.location.hash || "").replace("#", "").trim();
+    if (initialHash && ["showcase", "submit", "scoreboard", "teacher"].includes(initialHash)) {
+      this.switchView(initialHash);
+    } else {
+      this.switchView("showcase");
+    }
 
     // ฟังการเปลี่ยนแปลงข้อมูลใน Store เพื่อ re-render อัตโนมัติ
     this.store.subscribe(({ projects, settings }) => {
@@ -73,19 +80,31 @@ class App {
       link.addEventListener("click", (e) => {
         e.preventDefault();
         const targetView = link.dataset.view;
-        this.switchView(targetView);
+        if (targetView) this.switchView(targetView);
       });
+    });
+
+    // ฟังการเปลี่ยนแปลงของ URL Hash (เช่น กดปุ่ม Back/Forward บน Browser)
+    window.addEventListener("hashchange", () => {
+      const hash = (window.location.hash || "").replace("#", "").trim();
+      if (hash && ["showcase", "submit", "scoreboard", "teacher"].includes(hash) && hash !== this.currentView) {
+        this.switchView(hash);
+      }
     });
 
     // ปุ่มแก้ไขโครงงานด้วย Passcode
     const btnEditWithPasscode = document.getElementById("btn-edit-with-passcode");
     if (btnEditWithPasscode) {
-      btnEditWithPasscode.addEventListener("click", () => this.openPasscodeModal());
+      btnEditWithPasscode.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.openPasscodeModal();
+      });
     }
 
     // Hero CTA Buttons
     document.querySelectorAll("[data-navigate]").forEach(btn => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
         const view = btn.dataset.navigate;
         if (view) this.switchView(view);
       });
@@ -102,6 +121,10 @@ class App {
   }
 
   switchView(viewName) {
+    if (!["showcase", "submit", "scoreboard", "teacher"].includes(viewName)) {
+      viewName = "showcase";
+    }
+
     this.currentView = viewName;
 
     // ซ่อนทุกหน้า
@@ -119,6 +142,15 @@ class App {
         link.classList.remove("active");
       }
     });
+
+    // อัปเดต URL Hash
+    if (window.location.hash !== `#${viewName}`) {
+      try {
+        history.replaceState(null, "", `#${viewName}`);
+      } catch (e) {
+        window.location.hash = viewName;
+      }
+    }
 
     // Scroll ขึ้นด้านบน
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -650,7 +682,19 @@ class App {
   }
 }
 
-// เริ่มต้นการทำงานเมื่อโหลด DOM เสร็จสิ้น
-document.addEventListener("DOMContentLoaded", () => {
-  window.app = new App();
-});
+// เริ่มต้นการทำงานของ Application อย่างปลอดภัย
+function bootstrapApp() {
+  if (!window.app) {
+    try {
+      window.app = new App();
+    } catch (err) {
+      console.error("[App Bootstrap Error]:", err);
+    }
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrapApp);
+} else {
+  bootstrapApp();
+}
