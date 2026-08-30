@@ -6,7 +6,7 @@
 export class GeminiService {
   constructor() {
     this.apiKey = localStorage.getItem('gemini_api_key') || '';
-    this.model = localStorage.getItem('gemini_model') || 'gemini-3.7-flash';
+    this.model = localStorage.getItem('gemini_model') || 'gemini-3.5-flash';
   }
 
   setApiKey(key) {
@@ -36,7 +36,6 @@ export class GeminiService {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
-        // reader.result is something like "data:application/pdf;base64,JVBERi..."
         const base64Data = reader.result.split(',')[1];
         resolve(base64Data);
       };
@@ -61,10 +60,8 @@ export class GeminiService {
 
     // อ่านไฟล์ทั้งหมดเป็น Base64
     for (const file of files) {
-      // ตรวจสอบ MIME Type (แนะนำให้เป็น PDF)
       let mimeType = file.type;
       if (!mimeType) {
-        // fallback สำหรับ PDF ถ้าหา type ไม่เจอ
         mimeType = file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/plain';
       }
 
@@ -124,60 +121,73 @@ export class GeminiService {
         }
       ],
       generationConfig: {
-        temperature: 0.2, // ให้ผลลัพธ์คงที่ ไม่เบี่ยงเบนมากเกินไป
+        temperature: 0.2,
         responseMimeType: "application/json"
       }
     };
 
-    let retries = 3;
-    let delay = 2000;
-    let response;
-    let data;
+    // ลำดับโมเดลที่จะลองเรียก (โมเดลหลัก -> โมเดลสำรองถ้าโมเดลหลักติด 503)
+    const modelsToTry = [this.model];
+    const fallbackList = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+    for (const fb of fallbackList) {
+      if (!modelsToTry.includes(fb)) {
+        modelsToTry.push(fb);
+      }
+    }
 
-    const currentUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
+    let lastError = null;
 
-    while (retries > 0) {
-      try {
-        response = await fetch(`${currentUrl}?key=${this.apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody)
-        });
+    for (const currentModel of modelsToTry) {
+      const currentUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`;
+      let retries = 2;
+      let delay = 1500;
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          const errorMsg = errorData.error?.message || response.statusText;
-          
-          if (response.status === 503 || errorMsg.includes("high demand") || errorMsg.includes("overloaded")) {
-            console.warn(`Gemini API overloaded. Retrying in ${delay}ms... (${retries} retries left)`);
-            retries--;
-            if (retries === 0) {
-              throw new Error(`ระบบของ Gemini ตอนนี้มีผู้ใช้งานจำนวนมาก (High Demand) กรุณาลองใหม่อีกครั้งในภายหลัง (${errorMsg})`);
+      while (retries > 0) {
+        try {
+          const response = await fetch(`${currentUrl}?key=${this.apiKey}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error?.message || response.statusText || `HTTP ${response.status}`;
+            
+            // ถ้าเป็น 503 หรือ High Demand ให้ลอง Retry หรือ Fallback ไปตัวถัดไป
+            if (response.status === 503 || errorMsg.toLowerCase().includes("demand") || errorMsg.toLowerCase().includes("overload") || errorMsg.toLowerCase().includes("unavailable")) {
+              console.warn(`Model ${currentModel} busy (${errorMsg}). Retrying in ${delay}ms...`);
+              retries--;
+              if (retries === 0) {
+                lastError = new Error(`${currentModel}: ${errorMsg}`);
+                break; // หลุดไปลองโมเดลตัวถัดไป
+              }
+              await new Promise(res => setTimeout(res, delay));
+              delay *= 2;
+              continue;
             }
-            await new Promise(res => setTimeout(res, delay));
-            delay *= 2; // Exponential backoff
-            continue;
+            throw new Error(`API Error: ${errorMsg}`);
           }
-          throw new Error(`API Error: ${errorMsg}`);
-        }
 
-        data = await response.json();
-        break; // Success, exit retry loop
-      } catch (err) {
-        if (retries === 0 || !err.message.includes("High Demand")) {
-          throw err;
+          const data = await response.json();
+          
+          if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
+            let jsonText = data.candidates[0].content.parts[0].text;
+            return JSON.parse(jsonText);
+          } else {
+            throw new Error("โครงสร้างการตอบกลับจาก Gemini ไม่ถูกต้อง");
+          }
+        } catch (err) {
+          if (err.message.startsWith("API Error:")) {
+            throw err; // ข้อผิดพลาดเรื่อง Key หรือ Parameter ส่งต่อทันที
+          }
+          lastError = err;
         }
       }
     }
-      
-      // ดึงข้อความตอบกลับ
-      if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-        let jsonText = data.candidates[0].content.parts[0].text;
-        return JSON.parse(jsonText);
-      } else {
-        throw new Error("โครงสร้างการตอบกลับจาก Gemini ไม่ถูกต้อง");
-      }
+
+    throw lastError || new Error("ระบบ Gemini กำลังมีผู้ใช้งานหนาแน่นทุกโมเดล กรุณาลองใหม่อีกครั้งใน 1-2 นาที");
   }
 }
