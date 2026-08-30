@@ -127,7 +127,7 @@ class App {
   }
 
   switchView(viewName) {
-    if (!["showcase", "submit", "scoreboard", "teacher"].includes(viewName)) {
+    if (!["showcase", "submit", "scoreboard", "teacher", "gemini-eval"].includes(viewName)) {
       viewName = "showcase";
     }
 
