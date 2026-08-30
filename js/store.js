@@ -437,8 +437,10 @@ export class AppStore {
 
   isEmailAllowed(email) {
     if (!email) return false;
+    const clean = email.trim().toLowerCase();
     const allowed = (this.settings.adminEmails || ["peelaphat@psuwit.ac.th"]).map(e => e.trim().toLowerCase());
-    return allowed.includes(email.trim().toLowerCase());
+    const isDomainMatch = clean.endsWith("@psuwit.ac.th");
+    return (isDomainMatch || clean === "peelapatkaewkong@gmail.com") && allowed.includes(clean);
   }
 
   loginTeacherWithGoogle(userInfo) {

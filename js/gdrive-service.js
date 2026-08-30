@@ -164,14 +164,25 @@ export class GoogleDriveService {
           const userInfo = await this.fetchUserInfo(token);
 
           if (checkAdmin && userInfo?.email) {
+            const userEmail = userInfo.email.trim().toLowerCase();
             const whitelist = (allowedEmails.length > 0 ? allowedEmails : ["peelaphat@psuwit.ac.th"])
               .map(e => e.trim().toLowerCase());
 
-            if (!whitelist.includes(userInfo.email.trim().toLowerCase())) {
-              // อีเมลไม่ได้รับอนุญาต -> ลบ Token และยกเลิกสิทธิ์ทันที
+            const isDomainMatch = userEmail.endsWith("@psuwit.ac.th");
+            const isWhitelistMatch = whitelist.includes(userEmail);
+
+            if (!isDomainMatch || !isWhitelistMatch) {
+              // อีเมลไม่ได้รับอนุญาต หรือไม่ใช่โดเมน @psuwit.ac.th -> ลบ Token ทันที
               this.signOut();
-              const err = new Error(`บัญชี Google "${userInfo.email}" ไม่มีสิทธิ์เข้าถึงส่วนงานผู้ดูแลระบบ\nกรุณาเข้าสู่ระบบด้วยอีเมลของคุณครูผู้ดูแลระบบเท่านั้น (${whitelist.join(', ')})`);
+              let errMessage = "";
+              if (!isDomainMatch) {
+                errMessage = `บัญชี "${userInfo.email}" ไม่ได้อยู่ภายใต้โดเมน @psuwit.ac.th\n\nระบบอนุญาตเฉพาะบัญชีอีเมล Google Workspace ของโรงเรียน (@psuwit.ac.th) เท่านั้น ไม่สามารถเข้าใช้งานได้`;
+              } else {
+                errMessage = `บัญชี Google "${userInfo.email}" ไม่มีสิทธิ์เข้าถึงส่วนงานผู้ดูแลระบบ\nกรุณาเข้าสู่ระบบด้วยอีเมลของคุณครูผู้ดูแลระบบเท่านั้น (${whitelist.join(', ')})`;
+              }
+              const err = new Error(errMessage);
               err.isUnauthorized = true;
+              err.isDomainInvalid = !isDomainMatch;
               err.email = userInfo.email;
               reject(err);
               return;

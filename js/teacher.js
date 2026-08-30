@@ -145,14 +145,17 @@ export class TeacherController {
           type: "success"
         });
       } else {
-        throw new Error(`บัญชีอีเมล ${res.userInfo?.email || ''} ไม่ได้รับอนุญาตให้เข้าสู่ระบบผู้ดูแลระบบ`);
+        throw new Error(`บัญชีอีเมล ${res.userInfo?.email || ''} ไม่ได้รับอนุญาตให้เข้าสู่ระบบ`);
       }
     } catch (err) {
       console.error("Google admin login error:", err);
       await Popup.alert({
-        title: err.isUnauthorized ? "ปฏิเสธการเข้าถึง (Access Denied)" : "ไม่สามารถเข้าสู่ระบบได้",
-        message: err.message,
-        type: "error"
+        title: err.isDomainInvalid 
+          ? "⛔ ไม่อนุญาตให้เข้าใช้งาน (Invalid Domain)" 
+          : (err.isUnauthorized ? "⛔ ปฏิเสธการเข้าถึง (Access Denied)" : "ไม่สามารถเข้าสู่ระบบได้"),
+        message: err.message || "เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์การเข้าใช้งาน",
+        type: "error",
+        confirmText: "รับทราบ"
       });
     } finally {
       if (loginBtn) {
