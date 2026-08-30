@@ -30,6 +30,7 @@ class App {
   }
 
   init() {
+    this.gdriveService.syncFromSettings(this.store.getSettings());
     this.initControllers();
     this.bindGlobalEvents();
     this.updateHeader();

@@ -239,7 +239,7 @@ export class GoogleDriveService {
    */
   syncFromSettings(settings) {
     if (!settings) return;
-    if (settings.gdriveAccessToken && (!this.accessToken || Date.now() >= this.tokenExpiresAt)) {
+    if (settings.gdriveAccessToken) {
       this.accessToken = settings.gdriveAccessToken;
       this.tokenExpiresAt = parseInt(settings.gdriveTokenExp, 10) || (Date.now() + 3600 * 1000);
       if (settings.gdriveFolders) this.folderCache = settings.gdriveFolders;
@@ -292,11 +292,15 @@ export class GoogleDriveService {
     };
 
     this.folderCache = folders;
+    try {
+      localStorage.setItem('project_eval_gdrive_folders', JSON.stringify(folders));
+    } catch (e) {}
     return folders;
   }
 
   async findOrCreateFolder(name, parentId = null) {
-    const token = this.accessToken || window.gapi?.client?.getToken()?.access_token;
+    const settings = this.getSettings();
+    const token = this.accessToken || settings?.gdriveAccessToken || window.gapi?.client?.getToken()?.access_token || localStorage.getItem('project_eval_gdrive_token');
     if (!token) throw new Error("ไม่พบ Google Drive Access Token กรุณากดเชื่อมต่อ Google Drive ในหน้าระบบผู้ดูแลระบบ");
 
     let query = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -377,28 +381,38 @@ export class GoogleDriveService {
       try {
         if (onProgress) onProgress({ status: 'uploading', message: `กำลังส่ง "${formattedFileName}" เข้าโฟลเดอร์ ${folderNameThai}...` });
 
-        const folders = this.folderCache || settings.gdriveFolders || await this.ensureDriveFolders();
-        const targetParentId = folders[folderKey] || folders.mainFolderId || DEFAULT_PARENT_FOLDER_ID;
+        let folders = this.folderCache || settings.gdriveFolders;
+        if (!folders) {
+          try {
+            folders = await this.ensureDriveFolders();
+          } catch (folderErr) {
+            console.warn("[Folder Ensure Warning]:", folderErr);
+          }
+        }
+        const targetParentId = folders?.[folderKey] || folders?.mainFolderId || DEFAULT_PARENT_FOLDER_ID;
 
         // อ่านไฟล์เป็น Base64
         const { base64 } = await this.fileToBase64(file);
 
         // สร้าง Multipart Request Body สำหรับ Google Drive API v3
         const boundary = '-------ProjectEvalBoundary' + Date.now();
-        const delimiter = "\r\n--" + boundary + "\r\n";
+        const firstDelim = "--" + boundary + "\r\n";
+        const midDelim = "\r\n--" + boundary + "\r\n";
         const closeDelim = "\r\n--" + boundary + "--";
 
         const metadata = {
           name: formattedFileName,
-          mimeType: file.type || 'application/octet-stream',
-          parents: [targetParentId]
+          mimeType: file.type || 'application/octet-stream'
         };
+        if (targetParentId) {
+          metadata.parents = [targetParentId];
+        }
 
         const multipartRequestBody =
-          delimiter +
+          firstDelim +
           'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
           JSON.stringify(metadata) +
-          delimiter +
+          midDelim +
           'Content-Type: ' + (file.type || 'application/octet-stream') + '\r\n' +
           'Content-Transfer-Encoding: base64\r\n\r\n' +
           base64 +
