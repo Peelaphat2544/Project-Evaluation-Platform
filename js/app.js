@@ -222,12 +222,22 @@ class App {
         ? `<span class="badge badge-primary"><i class="fas fa-microchip"></i> สิ่งประดิษฐ์</span>`
         : `<span class="badge badge-success"><i class="fas fa-laptop-code"></i> แพลตฟอร์ม</span>`;
 
-      const isGraded = p.status === "evaluated" && p.evaluation;
-      const isScoreboardOpen = this.store.getSettings().scoreboardEnabled;
+      const isGraded = Boolean(p.status === "evaluated" && p.evaluation && p.evaluation.totalScore !== undefined);
+      const settings = this.store.getSettings();
+      const isScoreboardOpen = Boolean(settings.scoreboardEnabled);
+      const isTeacher = this.store.isTeacherLoggedIn;
 
       let statusBadge = `<span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> อยู่ในระหว่างการพิจารณา</span>`;
-      if (isScoreboardOpen && isGraded) {
-        statusBadge = `<span class="badge badge-success"><i class="fas fa-star"></i> ประเมินแล้ว (${p.evaluation.totalScore}/20)</span>`;
+      if (isGraded) {
+        if (isScoreboardOpen) {
+          statusBadge = `<span class="badge badge-success"><i class="fas fa-star"></i> ประเมินแล้ว (${p.evaluation.totalScore}/20)</span>`;
+        } else if (isTeacher) {
+          statusBadge = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> ประเมินแล้ว (${p.evaluation.totalScore}/20)</span>`;
+        } else {
+          statusBadge = `<span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> อยู่ในระหว่างการพิจารณา</span>`;
+        }
+      } else {
+        statusBadge = `<span class="badge badge-secondary"><i class="fas fa-clock"></i> รอรับการประเมิน</span>`;
       }
 
       const first3Members = (p.members || []).slice(0, 3);
@@ -356,7 +366,9 @@ class App {
 
     const settings = this.store.getSettings();
     const isTeacher = this.store.isTeacherLoggedIn;
-    const canSeeScore = Boolean(project.evaluation && (settings.scoreboardEnabled !== false || isTeacher));
+    const isScoreboardOpen = Boolean(settings.scoreboardEnabled);
+    const isGraded = Boolean(project.status === "evaluated" && project.evaluation && project.evaluation.totalScore !== undefined);
+    const canSeeScore = Boolean(isGraded && (isScoreboardOpen || isTeacher));
     const evalData = project.evaluation;
 
     let modal = document.getElementById("modal-project-detail");
