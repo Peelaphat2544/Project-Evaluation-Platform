@@ -661,13 +661,17 @@ class App {
 
   bindGeminiEvents() {
     const apiKeyInput = document.getElementById("gemini-api-key");
+    const modelSelect = document.getElementById("gemini-model-select");
     const geminiForm = document.getElementById("gemini-eval-form");
     const loadingState = document.getElementById("gemini-loading");
     const resultBox = document.getElementById("gemini-result-box");
 
-    // Load saved API Key
+    // Load saved API Key and Model
     if (apiKeyInput && this.geminiService.getApiKey()) {
       apiKeyInput.value = this.geminiService.getApiKey();
+    }
+    if (modelSelect && this.geminiService.getModel()) {
+      modelSelect.value = this.geminiService.getModel();
     }
 
     if (apiKeyInput) {
@@ -676,13 +680,22 @@ class App {
       });
     }
 
+    if (modelSelect) {
+      modelSelect.addEventListener("change", (e) => {
+        this.geminiService.setModel(e.target.value);
+      });
+    }
+
     if (geminiForm) {
       geminiForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         
-        // Save API key explicitly on submit if changed
+        // Save API key and model explicitly on submit if changed
         if (apiKeyInput.value.trim()) {
           this.geminiService.setApiKey(apiKeyInput.value.trim());
+        }
+        if (modelSelect.value) {
+          this.geminiService.setModel(modelSelect.value);
         }
 
         const title = document.getElementById("gemini-proj-title").value.trim();

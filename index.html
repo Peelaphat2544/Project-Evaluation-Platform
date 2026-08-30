@@ -544,9 +544,20 @@
             <h5 class="text-primary m-0"><i class="fas fa-key"></i> การตั้งค่า Gemini API</h5>
             <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-sm text-decoration-underline"><i class="fas fa-external-link-alt"></i> รับ API Key ฟรี</a>
           </div>
-          <div class="form-group mb-0">
-            <input type="password" id="gemini-api-key" class="form-control" placeholder="วาง API Key ของคุณที่นี่ (AIzaSy...)">
-            <small class="form-text text-muted">API Key จะถูกบันทึกไว้ในเบราว์เซอร์นี้อย่างปลอดภัย ไม่ถูกส่งไปยังเซิร์ฟเวอร์อื่นนอกจาก Google</small>
+          <div class="row">
+            <div class="col-md-7 mb-3 mb-md-0">
+              <label class="text-sm text-muted mb-1">API Key</label>
+              <input type="password" id="gemini-api-key" class="form-control" placeholder="วาง API Key ของคุณที่นี่ (AIzaSy...)">
+              <small class="form-text text-muted">API Key จะถูกบันทึกไว้ในเครื่องของคุณเท่านั้น</small>
+            </div>
+            <div class="col-md-5">
+              <label class="text-sm text-muted mb-1">โมเดล AI (Model)</label>
+              <select id="gemini-model-select" class="form-control">
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (แนะนำ - รวดเร็ว)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro (ฉลาดและแม่นยำสูง)</option>
+                <option value="gemini-3.7-flash" selected>Gemini 3.7 Flash (ล่าสุด)</option>
+              </select>
+            </div>
           </div>
         </div>
 

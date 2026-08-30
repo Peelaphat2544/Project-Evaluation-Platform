@@ -5,8 +5,8 @@
 
 export class GeminiService {
   constructor() {
-    this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent';
     this.apiKey = localStorage.getItem('gemini_api_key') || '';
+    this.model = localStorage.getItem('gemini_model') || 'gemini-3.7-flash';
   }
 
   setApiKey(key) {
@@ -16,6 +16,15 @@ export class GeminiService {
 
   getApiKey() {
     return this.apiKey;
+  }
+
+  setModel(model) {
+    this.model = model;
+    localStorage.setItem('gemini_model', model);
+  }
+
+  getModel() {
+    return this.model;
   }
 
   /**
@@ -125,9 +134,11 @@ export class GeminiService {
     let response;
     let data;
 
+    const currentUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
+
     while (retries > 0) {
       try {
-        response = await fetch(`${this.apiUrl}?key=${this.apiKey}`, {
+        response = await fetch(`${currentUrl}?key=${this.apiKey}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
