@@ -4,6 +4,7 @@
  */
 
 import { RUBRIC_CATEGORIES } from "./rubric-data.js";
+import { Popup } from "./popup-util.js";
 
 export class ScoreboardController {
   constructor({ store, showToast, openProjectDetail }) {
@@ -215,7 +216,7 @@ export class ScoreboardController {
     else if (rank === 3) rankBadge = `<span class="rank-badge rank-3-bg"><i class="fas fa-award"></i> 3</span>`;
 
     const memberAvatars = (project.members || []).slice(0, 3).map(m => `
-      <div class="avatar-stack-item" title="${m.title || ''}${m.fullName}">
+      <div class="avatar-stack-item clickable-avatar" data-photo="${m.photoUrl || ''}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
         <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" alt="${m.fullName}">
       </div>
     `).join("");
@@ -289,6 +290,22 @@ export class ScoreboardController {
         const id = el.dataset.id;
         if (id && this.openProjectDetail) {
           this.openProjectDetail(id);
+        }
+      });
+    });
+
+    container.querySelectorAll(".avatar-stack-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const photo = item.dataset.photo;
+        const name = item.dataset.name;
+        const id = item.dataset.id;
+        if (photo) {
+          Popup.imagePreview({
+            imageUrl: photo,
+            title: name || "รูปประจำตัว",
+            subtitle: id ? `รหัสนักเรียน: ${id}` : ""
+          });
         }
       });
     });

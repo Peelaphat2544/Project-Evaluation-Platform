@@ -165,21 +165,30 @@
               <input type="text" id="proj-title-en" class="form-control" placeholder="เช่น Smart IoT Plant Irrigation System">
             </div>
 
-            <div class="form-row form-row-2">
+            <div class="form-row form-row-3">
               <div class="form-group">
                 <label>ประเภทโครงงาน <span class="required">*</span></label>
                 <select id="proj-type" class="form-control" required>
                   <option value="invention">สิ่งประดิษฐ์ (Hardware / Device / STEM)</option>
                   <option value="software">แพลตฟอร์ม / ซอฟต์แวร์ (Web / Mobile / AI)</option>
                 </select>
-                <div id="proj-type-hint" class="text-xs text-primary mt-1">
-                  💡 เกณฑ์สิ่งประดิษฐ์: ประเมินชิ้นงานจริง ความทนทาน ความปลอดภัย และการประยุกต์ความรู้
-                </div>
               </div>
 
               <div class="form-group">
-                <label>ระดับชั้น / ห้องเรียน <span class="required">*</span></label>
-                <input type="text" id="proj-classroom" class="form-control" placeholder="เช่น ม.5/1 หรือ ม.4/3" required>
+                <label>ระดับชั้น <span class="required">*</span></label>
+                <select id="proj-grade-level" class="form-control" required>
+                  <option value="ม.5">มัธยมศึกษาปีที่ 5 (ม.5)</option>
+                  <option value="ม.4">มัธยมศึกษาปีที่ 4 (ม.4)</option>
+                  <option value="ม.6">มัธยมศึกษาปีที่ 6 (ม.6)</option>
+                  <option value="ม.1">มัธยมศึกษาปีที่ 1 (ม.1)</option>
+                  <option value="ม.2">มัธยมศึกษาปีที่ 2 (ม.2)</option>
+                  <option value="ม.3">มัธยมศึกษาปีที่ 3 (ม.3)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>ห้องเรียน <span class="required">*</span></label>
+                <input type="text" id="proj-classroom" class="form-control" placeholder="เช่น 1 หรือ ม.5/1" required>
               </div>
             </div>
 
@@ -195,8 +204,8 @@
               </div>
 
               <div class="form-group">
-                <label><i class="fab fa-github text-dark"></i> ลิงก์ซอร์สโค้ด GitHub (ถ้ามี)</label>
-                <input type="url" id="proj-github-url" class="form-control" placeholder="https://github.com/username/project">
+                <label><i class="fab fa-github text-dark"></i> ลิงก์ซอร์สโค้ด GitHub หรือ ลิงก์ของโครงการ (ถ้ามี)</label>
+                <input type="url" id="proj-github-url" class="form-control" placeholder="https://github.com/username/project หรือ ลิงก์เว็บไซต์/โปรเจกต์">
               </div>
             </div>
           </div>

@@ -104,6 +104,48 @@ export class Popup {
     });
   }
 
+  /**
+   * แสดงหน้าต่างแสดงรูปภาพประจำตัวขนาดใหญ่ (Image Preview Lightbox)
+   * @param {Object} options
+   */
+  static imagePreview({ imageUrl, title = 'รูปภาพประจำตัว', subtitle = '' }) {
+    if (!imageUrl) return;
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay active animate-fade-in';
+    modal.style.zIndex = '10000';
+
+    modal.innerHTML = `
+      <div class="modal-box animate-scale-up text-center p-3" style="max-width: 480px; width: 92%; background: white; border-radius: var(--radius-xl); box-shadow: var(--shadow-xl);">
+        <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+          <div class="text-start">
+            <h4 class="mb-0 font-bold text-dark text-sm"><i class="fas fa-id-badge text-primary"></i> ${this.escapeHtml(title)}</h4>
+            ${subtitle ? `<div class="text-xs text-muted mt-1">${this.escapeHtml(subtitle)}</div>` : ''}
+          </div>
+          <button type="button" class="btn-close-modal" id="btn-close-image-modal" style="font-size: 1.5rem; line-height: 1; padding: 4px 8px; border: none; background: transparent; cursor: pointer;">&times;</button>
+        </div>
+        <div class="image-preview-container my-2" style="max-height: 65vh; overflow: hidden; border-radius: var(--radius-lg); background: #f1f5f9; display: flex; align-items: center; justify-content: center; padding: 6px;">
+          <img src="${imageUrl}" alt="${this.escapeHtml(title)}" style="max-width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--radius-md); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        </div>
+        <div class="mt-3">
+          <button type="button" class="btn btn-secondary btn-sm w-100" id="btn-close-image-footer">ปิดหน้าต่าง</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => {
+      modal.classList.remove('active');
+      setTimeout(() => modal.remove(), 250);
+    };
+
+    modal.querySelector('#btn-close-image-modal')?.addEventListener('click', close);
+    modal.querySelector('#btn-close-image-footer')?.addEventListener('click', close);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) close();
+    });
+  }
+
   static escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

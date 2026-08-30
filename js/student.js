@@ -47,21 +47,6 @@ export class StudentController {
     // Drag & Drop / File inputs สำหรับเล่มและสไลด์
     this.setupFileInput("report-file-input", "report-file-preview", "report");
     this.setupFileInput("slide-file-input", "slide-file-preview", "presentation");
-
-    // ตรวจสอบการเปลี่ยนประเภทโครงงานเพื่ออัปเดตคำแนะนำ
-    const typeSelect = document.getElementById("proj-type");
-    if (typeSelect) {
-      typeSelect.addEventListener("change", (e) => {
-        const hint = document.getElementById("proj-type-hint");
-        if (hint) {
-          if (e.target.value === "invention") {
-            hint.textContent = "💡 เกณฑ์สิ่งประดิษฐ์: ประเมินชิ้นงานจริง ความทนทาน ความปลอดภัย และการประยุกต์ STEM";
-          } else {
-            hint.textContent = "💡 เกณฑ์แพลตฟอร์ม/ซอฟต์แวร์: ประเมิน UI/UX, การทำงานของระบบ/โค้ด และความเสถียรไม่มีบั๊ก";
-          }
-        }
-      });
-    }
   }
 
   setupFileInput(inputId, previewId, type) {
@@ -220,6 +205,23 @@ export class StudentController {
       this.memberPhotos[memberIndex] = { existingUrl: data.photoUrl };
     }
 
+    if (avatarImg) {
+      avatarImg.style.cursor = "pointer";
+      avatarImg.title = "คลิกเพื่อดูรูปภาพขนาดใหญ่";
+      avatarImg.addEventListener("click", (e) => {
+        if (avatarImg.src && !avatarImg.src.includes("placeholder") && !avatarImg.classList.contains("d-none")) {
+          e.stopPropagation();
+          const nameVal = memberEl.querySelector(".member-name")?.value || "สมาชิก";
+          const idVal = memberEl.querySelector(".member-id")?.value || "";
+          Popup.imagePreview({
+            imageUrl: avatarImg.src,
+            title: nameVal,
+            subtitle: idVal ? `รหัสนักเรียน: ${idVal}` : ""
+          });
+        }
+      });
+    }
+
     if (photoInput) {
       photoInput.addEventListener("change", (e) => {
         const file = e.target.files[0];
@@ -259,9 +261,16 @@ export class StudentController {
     const titleEn = document.getElementById("proj-title-en")?.value.trim() || "";
     const type = document.getElementById("proj-type")?.value || "invention";
     const description = document.getElementById("proj-desc")?.value.trim() || "";
-    const classroom = document.getElementById("proj-classroom")?.value.trim() || "";
+    const gradeLevel = document.getElementById("proj-grade-level")?.value || "ม.5";
+    let classroomInput = document.getElementById("proj-classroom")?.value.trim() || "";
     const demoUrl = document.getElementById("proj-demo-url")?.value.trim() || "";
     const githubUrl = document.getElementById("proj-github-url")?.value.trim() || "";
+
+    // ปรับรูปแบบห้องเรียน เช่น ถ้ากรอก 1 ให้กลายเป็น ม.5/1
+    let classroom = classroomInput;
+    if (classroom && !classroom.includes("/") && !classroom.startsWith("ม.")) {
+      classroom = `${gradeLevel}/${classroom}`;
+    }
 
     if (!title) {
       await Popup.alert({
@@ -272,10 +281,10 @@ export class StudentController {
       return;
     }
 
-    if (!classroom) {
+    if (!classroomInput) {
       await Popup.alert({
         title: "กรุณากรอกข้อมูล",
-        message: "กรุณาระบุระดับชั้น / ห้องเรียน (เช่น ม.5/1)",
+        message: "กรุณาระบุห้องเรียน (เช่น 1 หรือ ม.5/1)",
         type: "warning"
       });
       return;
@@ -540,7 +549,7 @@ export class StudentController {
     const titleInput = document.getElementById("proj-title");
     const titleEnInput = document.getElementById("proj-title-en");
     const typeSelect = document.getElementById("proj-type");
-    const descInput = document.getElementById("proj-desc");
+    const gradeSelect = document.getElementById("proj-grade-level");
     const classInput = document.getElementById("proj-classroom");
     const demoInput = document.getElementById("proj-demo-url");
     const githubInput = document.getElementById("proj-github-url");
@@ -551,7 +560,14 @@ export class StudentController {
     if (titleEnInput) titleEnInput.value = project.titleEn || "";
     if (typeSelect) typeSelect.value = project.type || "invention";
     if (descInput) descInput.value = project.description || "";
-    if (classInput) classInput.value = project.classroom || "";
+    if (gradeSelect) gradeSelect.value = project.gradeLevel || "ม.5";
+    if (classInput) {
+      let r = project.classroom || "";
+      if (project.gradeLevel && r.startsWith(project.gradeLevel + "/")) {
+        r = r.substring((project.gradeLevel + "/").length);
+      }
+      classInput.value = r || project.classroom || "";
+    }
     if (demoInput) demoInput.value = project.demoUrl || "";
     if (githubInput) githubInput.value = project.githubUrl || "";
 

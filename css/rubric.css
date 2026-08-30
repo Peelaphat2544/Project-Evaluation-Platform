@@ -503,6 +503,18 @@ input:checked + .toggle-slider:before {
   border-radius: var(--radius-md);
   padding: 1rem;
   text-align: center;
+  transition: all var(--transition-fast);
+}
+
+.clickable-member-card {
+  cursor: pointer;
+}
+
+.clickable-member-card:hover {
+  transform: translateY(-3px);
+  background: white;
+  border-color: var(--primary);
+  box-shadow: 0 8px 16px -4px rgba(79, 70, 229, 0.15);
 }
 
 .member-avatar-lg {
@@ -513,6 +525,20 @@ input:checked + .toggle-slider:before {
   margin: 0 auto 8px;
   border: 2px solid white;
   box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+}
+
+.clickable-member-card:hover .member-avatar-lg,
+.clickable-avatar:hover {
+  transform: scale(1.08);
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+  cursor: pointer;
+}
+
+.clickable-avatar {
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .member-name-text {

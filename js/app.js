@@ -215,7 +215,7 @@ class App {
             <div class="showcase-members-row">
               <div class="avatar-stack">
                 ${first3Members.map(m => `
-                  <div class="avatar-stack-item" title="${m.title || ''}${m.fullName}">
+                  <div class="avatar-stack-item clickable-avatar" data-photo="${m.photoUrl || ''}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
                     <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" alt="${m.fullName}">
                   </div>
                 `).join("")}
@@ -243,6 +243,76 @@ class App {
         if (id) this.openProjectDetailModal(id);
       });
     });
+
+    container.querySelectorAll(".avatar-stack-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const photo = item.dataset.photo;
+        const name = item.dataset.name;
+        const id = item.dataset.id;
+        if (photo) {
+          Popup.imagePreview({
+            imageUrl: photo,
+            title: name || "รูปประจำตัว",
+            subtitle: id ? `รหัสนักเรียน: ${id}` : ""
+          });
+        }
+      });
+    });
+  }
+
+  // ===================== FILE & MEDIA HELPERS =====================
+
+  resolveFileUrl(fileObj) {
+    if (!fileObj) return null;
+    if (typeof fileObj === 'string') return fileObj;
+    if (fileObj.viewUrl) return fileObj.viewUrl;
+    if (fileObj.directViewUrl) return fileObj.directViewUrl;
+    if (fileObj.previewUrl) return fileObj.previewUrl;
+    if (fileObj.downloadUrl) return fileObj.downloadUrl;
+    if (fileObj.fileId && !fileObj.fileId.startsWith('local_')) {
+      return `https://drive.google.com/file/d/${fileObj.fileId}/view`;
+    }
+    return null;
+  }
+
+  openFile(fileObj, defaultName = 'file') {
+    const url = this.resolveFileUrl(fileObj);
+    if (!url) {
+      Popup.alert({
+        title: "ไม่พบไฟล์",
+        message: "โครงงานนี้ยังไม่ได้แนบไฟล์ดังกล่าว หรือไฟล์ยังไม่พร้อมใช้งาน",
+        type: "warning"
+      });
+      return;
+    }
+
+    if (url.startsWith('data:')) {
+      try {
+        const arr = url.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        const win = window.open(blobUrl, '_blank');
+        if (!win) {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = fileObj?.fileName || defaultName;
+          a.click();
+        }
+      } catch (e) {
+        window.open(url, '_blank');
+      }
+    } else {
+      window.open(url, '_blank');
+    }
   }
 
   // ===================== PROJECT DETAIL MODAL =====================
@@ -253,7 +323,7 @@ class App {
 
     const settings = this.store.getSettings();
     const isTeacher = this.store.isTeacherLoggedIn;
-    const canSeeScore = Boolean(settings.scoreboardEnabled || isTeacher);
+    const canSeeScore = Boolean(project.evaluation && (settings.scoreboardEnabled !== false || isTeacher));
     const evalData = project.evaluation;
 
     let modal = document.getElementById("modal-project-detail");
@@ -264,8 +334,8 @@ class App {
       document.body.appendChild(modal);
     }
 
-    const reportUrl = project.reportFile?.viewUrl || project.reportFile?.directViewUrl;
-    const slideUrl = project.slideFile?.viewUrl || project.slideFile?.directViewUrl;
+    const hasReport = Boolean(this.resolveFileUrl(project.reportFile));
+    const hasSlide = Boolean(this.resolveFileUrl(project.slideFile));
 
     modal.innerHTML = `
       <div class="modal-box modal-lg animate-scale-up">
@@ -289,17 +359,20 @@ class App {
               <span class="badge badge-light"><i class="fas fa-school"></i> ระดับชั้น/ห้อง: <b>${project.classroom || project.gradeLevel}</b></span>
               <span class="badge badge-light"><i class="fas fa-calendar-alt"></i> วันที่ส่ง: ${new Date(project.createdAt).toLocaleDateString('th-TH')}</span>
               ${project.demoUrl ? `<a href="${project.demoUrl}" target="_blank" class="badge badge-primary"><i class="fas fa-external-link-alt"></i> ลิงก์สาธิตผลงาน</a>` : ''}
-              ${project.githubUrl ? `<a href="${project.githubUrl}" target="_blank" class="badge badge-dark"><i class="fab fa-github"></i> ซอร์สโค้ด GitHub</a>` : ''}
+              ${project.githubUrl ? `<a href="${project.githubUrl}" target="_blank" class="badge badge-dark"><i class="fab fa-github"></i> ซอร์สโค้ด / ลิงก์โครงการ</a>` : ''}
             </div>
           </div>
 
-          <!-- สมาชิกในกลุ่มพร้อมรูปถ่าย -->
+          <!-- สมาชิกในกลุ่มพร้อมรูปถ่าย (คลิกดูภาพขนาดใหญ่ได้) -->
           <div class="detail-section mb-4">
-            <h5 class="section-heading"><i class="fas fa-users text-primary"></i> สมาชิกในกลุ่ม (${(project.members || []).length} คน)</h5>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h5 class="section-heading mb-0"><i class="fas fa-users text-primary"></i> สมาชิกในกลุ่ม (${(project.members || []).length} คน)</h5>
+              <span class="text-xs text-muted"><i class="fas fa-search-plus"></i> คลิกที่รูปเพื่อดูภาพขนาดใหญ่</span>
+            </div>
             <div class="members-avatar-grid">
-              ${(project.members || []).map(m => `
-                <div class="member-profile-card">
-                  <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" class="member-avatar-lg" alt="${m.fullName}">
+              ${(project.members || []).map((m, mIdx) => `
+                <div class="member-profile-card clickable-member-card" data-member-idx="${mIdx}" title="คลิกเพื่อดูรูปภาพขนาดใหญ่">
+                  <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" class="member-avatar-lg clickable-avatar" alt="${m.fullName}">
                   <div class="member-name-text">${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}</div>
                   <div class="member-sub-text">รหัส: ${m.studentId || '-'} | ห้อง: ${m.room || '-'} เลขที่: ${m.number || '-'}</div>
                   ${m.role ? `<div class="member-role-badge">${this.escapeHtml(m.role)}</div>` : ''}
@@ -317,13 +390,11 @@ class App {
                   <i class="fas fa-file-pdf fa-2x text-danger"></i>
                   <div class="file-box-info">
                     <div class="font-bold text-sm">เล่มรายงานโครงงาน</div>
-                    <div class="text-xs text-muted">${project.reportFile ? project.reportFile.fileName : 'ยังไม่ได้แนบไฟล์'}</div>
+                    <div class="text-xs text-muted">${project.reportFile ? (project.reportFile.fileName || 'ไฟล์เล่มรายงาน') : 'ยังไม่ได้แนบไฟล์'}</div>
                   </div>
-                  ${reportUrl ? `
-                    <a href="${reportUrl}" target="_blank" class="btn btn-sm btn-outline-danger">
-                      <i class="fas fa-external-link-alt"></i> เปิดดู
-                    </a>
-                  ` : ''}
+                  <button type="button" class="btn btn-sm btn-outline-danger" id="btn-open-report">
+                    <i class="fas fa-external-link-alt"></i> เปิดดูไฟล์
+                  </button>
                 </div>
               </div>
 
@@ -332,75 +403,78 @@ class App {
                   <i class="fas fa-file-powerpoint fa-2x text-warning"></i>
                   <div class="file-box-info">
                     <div class="font-bold text-sm">สื่อนำเสนอโครงงาน</div>
-                    <div class="text-xs text-muted">${project.slideFile ? project.slideFile.fileName : 'ยังไม่ได้แนบไฟล์'}</div>
+                    <div class="text-xs text-muted">${project.slideFile ? (project.slideFile.fileName || 'ไฟล์สื่อนำเสนอ') : 'ยังไม่ได้แนบไฟล์'}</div>
                   </div>
-                  ${slideUrl ? `
-                    <a href="${slideUrl}" target="_blank" class="btn btn-sm btn-outline-warning">
-                      <i class="fas fa-external-link-alt"></i> เปิดดู
-                    </a>
-                  ` : ''}
+                  <button type="button" class="btn btn-sm btn-outline-warning" id="btn-open-slide">
+                    <i class="fas fa-external-link-alt"></i> เปิดดูสไลด์
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- ผลการประเมินและคะแนน (ถ้าเปิดหรือเป็นครู) -->
+          <!-- ผลการประเมินและคะแนน (แสดงผลคะแนนในหน้านักเรียน) -->
           <div class="detail-section">
             <h5 class="section-heading"><i class="fas fa-award text-warning"></i> ผลการประเมินคะแนน (Rubric 20 คะแนน)</h5>
-            ${canSeeScore ? (
-              evalData ? `
-                <div class="score-report-card">
-                  <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div>
-                      <div class="text-xs text-muted">คะแนนรวมทั้งหมด</div>
-                      <div class="score-display-huge">${evalData.totalScore} <span class="text-sm text-muted">/ 20</span></div>
-                    </div>
-                    <div class="text-end">
-                      <div class="text-xs text-muted">ระดับผลการประเมิน</div>
-                      <div class="badge badge-lg ${this.getGradeBadgeClass(evalData.gradeBadge)}">${evalData.gradeBadge}</div>
-                    </div>
+            ${canSeeScore ? `
+              <div class="score-report-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <div>
+                    <div class="text-xs text-muted">คะแนนรวมทั้งหมด</div>
+                    <div class="score-display-huge">${evalData.totalScore} <span class="text-sm text-muted">/ 20</span></div>
+                    ${evalData.bonusScore ? `<span class="badge badge-success mt-1">+${evalData.bonusScore} คะแนนพิเศษ (Bonus)</span>` : ''}
                   </div>
+                  <div class="text-end">
+                    <div class="text-xs text-muted">ระดับผลการประเมิน</div>
+                    <div class="badge badge-lg ${this.getGradeBadgeClass(evalData.gradeBadge)}">${evalData.gradeBadge}</div>
+                  </div>
+                </div>
 
-                  <!-- แจกแจงคะแนน 5 ด้าน -->
-                  <div class="rubric-breakdown-list mb-3">
-                    ${RUBRIC_CATEGORIES.map(cat => {
-                      const score = evalData.scores?.[cat.id] || 0;
-                      const percent = (score / 4) * 100;
-                      return `
-                        <div class="breakdown-item mb-2">
-                          <div class="d-flex justify-content-between text-xs font-bold mb-1">
-                            <span>${cat.title}</span>
-                            <span>${score} / 4</span>
-                          </div>
-                          <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-primary" style="width: ${percent}%"></div>
-                          </div>
+                <!-- แจกแจงคะแนน 5 ด้าน -->
+                <div class="rubric-breakdown-list mb-3">
+                  ${RUBRIC_CATEGORIES.map(cat => {
+                    const score = evalData.scores?.[cat.id] || 0;
+                    const percent = (score / 4) * 100;
+                    return `
+                      <div class="breakdown-item mb-2">
+                        <div class="d-flex justify-content-between text-xs font-bold mb-1">
+                          <span>${cat.title}</span>
+                          <span>${score} / 4</span>
                         </div>
-                      `;
-                    }).join("")}
-                  </div>
+                        <div class="progress" style="height: 8px;">
+                          <div class="progress-bar bg-primary" style="width: ${percent}%"></div>
+                        </div>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
 
-                  ${evalData.feedback ? `
-                    <div class="feedback-box p-3 bg-light rounded mt-3">
-                      <div class="font-bold text-xs text-primary mb-1"><i class="fas fa-quote-left"></i> ข้อเสนอแนะและข้อคิดเห็นเชิงพัฒนา:</div>
-                      <p class="text-sm mb-0 text-dark">${this.escapeHtml(evalData.feedback)}</p>
-                    </div>
-                  ` : ''}
+                ${evalData.feedback ? `
+                  <div class="feedback-box p-3 bg-light rounded mt-3">
+                    <div class="font-bold text-xs text-primary mb-1"><i class="fas fa-quote-left"></i> ข้อเสนอแนะและข้อคิดเห็นเชิงพัฒนา:</div>
+                    <p class="text-sm mb-0 text-dark">${this.escapeHtml(evalData.feedback)}</p>
+                  </div>
+                ` : ''}
+              </div>
+            ` : (
+              project.status === "evaluated" && evalData ? `
+                <div class="alert alert-info text-sm d-flex align-items-center gap-2">
+                  <i class="fas fa-hourglass-start fa-2x text-warning"></i>
+                  <div>
+                    <b>อยู่ในระหว่างการพิจารณา</b><br>
+                    ระบบยังไม่ได้ประกาศผลการประเมินอย่างเป็นทางการ กรุณารอประกาศจากทางรายวิชา
+                  </div>
                 </div>
               ` : `
-                <div class="alert alert-warning text-sm">
-                  <i class="fas fa-clock"></i> ผลงานโครงงานนี้อยู่ในระหว่างการรอรับการประเมินจากคณะกรรมการ
+                <div class="alert alert-warning text-sm d-flex align-items-center gap-2">
+                  <i class="fas fa-clock fa-2x text-warning"></i>
+                  <div>
+                    <b>รอรับการประเมิน</b><br>
+                    ผลงานโครงงานนี้อยู่ในระหว่างการรอรับการประเมินจากคณะกรรมการ
+                  </div>
                 </div>
               `
-            ) : `
-              <div class="alert alert-info text-sm d-flex align-items-center gap-2">
-                <i class="fas fa-hourglass-start fa-2x text-warning"></i>
-                <div>
-                  <b>อยู่ในระหว่างการพิจารณา</b><br>
-                  ระบบยังไม่ได้ประกาศผลการประเมินอย่างเป็นทางการ กรุณารอประกาศจากทางรายวิชา
-                </div>
-              </div>
-            `}
+            )}
           </div>
         </div>
 
@@ -415,13 +489,40 @@ class App {
 
     modal.classList.add("active");
 
+    // Close handlers
     modal.querySelector("#btn-close-detail")?.addEventListener("click", () => modal.classList.remove("active"));
     modal.querySelector("#btn-close-detail-footer")?.addEventListener("click", () => modal.classList.remove("active"));
     
+    // Edit handler
     modal.querySelector("#btn-edit-this-proj")?.addEventListener("click", () => {
       modal.classList.remove("active");
       this.openPasscodeModal(project.id);
     });
+
+    // Report & Slide Buttons
+    modal.querySelector("#btn-open-report")?.addEventListener("click", () => {
+      this.openFile(project.reportFile, `เล่มรายงาน_${project.title}`);
+    });
+
+    modal.querySelector("#btn-open-slide")?.addEventListener("click", () => {
+      this.openFile(project.slideFile, `สื่อนำเสนอ_${project.title}`);
+    });
+
+    // Member Photo Click Lightbox Preview
+    modal.querySelectorAll(".clickable-member-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const idx = parseInt(card.dataset.memberIdx, 10);
+        const m = (project.members || [])[idx];
+        if (m && m.photoUrl) {
+          Popup.imagePreview({
+            imageUrl: m.photoUrl,
+            title: `${m.title || ''}${m.fullName}`,
+            subtitle: `รหัสนักเรียน: ${m.studentId || '-'} | ระดับชั้น: ${m.grade || project.gradeLevel || 'ม.5'} ห้อง ${m.room || '-'} เลขที่: ${m.number || '-'}`
+          });
+        }
+      });
+    });
+  }
   }
 
   // ===================== PASSCODE EDIT MODAL =====================
