@@ -236,17 +236,28 @@ export class GoogleDriveService {
 
   /**
    * ซิงค์ Token และ Folder จาก Settings ใน Cloud
+   * ตรวจสอบ Token Expiry ก่อนรับ — ถ้าหมดอายุแล้วจะไม่รับ Token เก่ามาใช้
    */
   syncFromSettings(settings) {
     if (!settings) return;
     if (settings.gdriveAccessToken) {
-      this.accessToken = settings.gdriveAccessToken;
-      this.tokenExpiresAt = parseInt(settings.gdriveTokenExp, 10) || (Date.now() + 3600 * 1000);
-      if (settings.gdriveFolders) this.folderCache = settings.gdriveFolders;
-      if (window.gapi?.client) {
-        window.gapi.client.setToken({ access_token: this.accessToken });
+      const expiry = parseInt(settings.gdriveTokenExp, 10) || 0;
+      // ตรวจสอบว่า Token ยังไม่หมดอายุ (เผื่อเวลา 60 วินาที)
+      if (expiry > Date.now() + 60000) {
+        this.accessToken = settings.gdriveAccessToken;
+        this.tokenExpiresAt = expiry;
+        if (settings.gdriveFolders) this.folderCache = settings.gdriveFolders;
+        if (window.gapi?.client) {
+          window.gapi.client.setToken({ access_token: this.accessToken });
+        }
+        console.log(`[Google Drive] ซิงค์ Active Token จาก Cloud สำเร็จ (หมดอายุ: ${new Date(expiry).toLocaleTimeString()})`);
+      } else {
+        console.warn(`[Google Drive] Token จาก Cloud หมดอายุแล้ว (${expiry ? new Date(expiry).toLocaleTimeString() : 'ไม่ทราบ'}) → ไม่รับ Token เก่ามาใช้`);
+        // เก็บ folder cache ไว้ใช้ (ไม่เปลี่ยน)
+        if (settings.gdriveFolders && !this.folderCache) {
+          this.folderCache = settings.gdriveFolders;
+        }
       }
-      console.log("[Google Drive] ซิงค์ Active Token จาก Cloud เรียบร้อยแล้ว");
     }
   }
 
@@ -271,6 +282,59 @@ export class GoogleDriveService {
    */
   isConfigured() {
     return Boolean(this.accessToken && Date.now() < this.tokenExpiresAt);
+  }
+
+  /**
+   * ตรวจสอบ Token กับ Google API ว่ายังใช้ได้จริง
+   */
+  async validateToken(token) {
+    if (!token) return false;
+    try {
+      const res = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${token}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data && data.expires_in > 30;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * ดึง Active Token ที่ยังไม่หมดอายุ ดึงจากหลายแหล่ง พร้อมเช็ค expiry
+   */
+  getActiveToken() {
+    // 1. Token จาก instance (ได้จาก requestDriveAuth หรือ syncFromSettings)
+    if (this.accessToken && Date.now() < this.tokenExpiresAt - 60000) {
+      return this.accessToken;
+    }
+
+    // 2. Token จาก GAPI client (ถ้า user ใช้ GAPI)
+    const gapiToken = window.gapi?.client?.getToken()?.access_token;
+    if (gapiToken) return gapiToken;
+
+    // 3. Token จาก Settings (Firestore/localStorage)
+    const settings = this.getSettings();
+    const settingsExp = parseInt(settings?.gdriveTokenExp, 10) || 0;
+    if (settings?.gdriveAccessToken && settingsExp > Date.now() + 60000) {
+      this.accessToken = settings.gdriveAccessToken;
+      this.tokenExpiresAt = settingsExp;
+      return this.accessToken;
+    }
+
+    // 4. Token จาก localStorage (ฝั่ง client cache)
+    try {
+      const cached = localStorage.getItem('project_eval_gdrive_token');
+      const cachedExp = parseInt(localStorage.getItem('project_eval_gdrive_token_exp'), 10) || 0;
+      if (cached && cachedExp > Date.now() + 60000) {
+        this.accessToken = cached;
+        this.tokenExpiresAt = cachedExp;
+        return cached;
+      }
+    } catch (e) {}
+
+    return null;
   }
 
   /**
@@ -340,6 +404,7 @@ export class GoogleDriveService {
 
   /**
    * อัปโหลดไฟล์เข้า Google Drive และบันทึกลงในโฟลเดอร์ที่ถูกต้อง
+   * ตรวจสอบ Token ก่อนอัปโหลด — ถ้าหมดอายุจะแจ้ง Error ชัดเจน
    */
   async uploadFile({ file, type, projectName, studentName = '', studentId = '', onProgress = null }) {
     if (!file) throw new Error("ไม่พบไฟล์ที่ต้องการอัปโหลด");
@@ -371,205 +436,172 @@ export class GoogleDriveService {
       folderNameThai = FOLDER_NAMES.PHOTO;
     }
 
-    const settings = this.getSettings();
-
     // =========================================================================
-    // วิธีที่ 1: อัปโหลดผ่าน Google OAuth 2.0 (Multipart/Related มี Parents แน่นอน)
+    // ขั้นตอนที่ 0: ตรวจสอบ Active Token ที่ยังไม่หมดอายุ
     // =========================================================================
-    const activeToken = this.accessToken || settings.gdriveAccessToken || window.gapi?.client?.getToken()?.access_token || localStorage.getItem('project_eval_gdrive_token');
-    if (activeToken) {
-      try {
-        if (onProgress) onProgress({ status: 'uploading', message: `กำลังส่ง "${formattedFileName}" เข้าโฟลเดอร์ ${folderNameThai}...` });
-
-        let folders = this.folderCache || settings.gdriveFolders;
-        if (!folders) {
-          try {
-            folders = await this.ensureDriveFolders();
-          } catch (folderErr) {
-            console.warn("[Folder Ensure Warning]:", folderErr);
-          }
-        }
-        const targetParentId = folders?.[folderKey] || folders?.mainFolderId || DEFAULT_PARENT_FOLDER_ID;
-
-        // สร้าง Binary Multipart Request Body (Blob) สำหรับ Google Drive API v3
-        const boundary = '-------ProjectEvalBoundary' + Date.now();
-        const metadata = {
-          name: formattedFileName,
-          mimeType: file.type || 'application/octet-stream'
-        };
-        if (targetParentId) {
-          metadata.parents = [targetParentId];
-        }
-
-        const metadataBlob = new Blob([
-          `--${boundary}\r\n`,
-          'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-          JSON.stringify(metadata),
-          '\r\n'
-        ], { type: 'application/json' });
-
-        const fileHeaderBlob = new Blob([
-          `--${boundary}\r\n`,
-          `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`
-        ], { type: 'text/plain' });
-
-        const closeBlob = new Blob([
-          `\r\n--${boundary}--`
-        ], { type: 'text/plain' });
-
-        const multipartBody = new Blob([metadataBlob, fileHeaderBlob, file, closeBlob]);
-
-        let uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${activeToken}`,
-            'Content-Type': `multipart/related; boundary=${boundary}`
-          },
-          body: multipartBody
-        });
-
-        let uploadedFile = null;
-        if (uploadRes.ok) {
-          uploadedFile = await uploadRes.json();
-        } else {
-          const errText = await uploadRes.text();
-          console.warn("[Google Drive Upload Warning with parent]:", uploadRes.status, errText);
-
-          // ถ้าเกิดข้อผิดพลาดกับ Parent Folder ให้ลองอัปโหลดเข้า Root Drive โดยตรง
-          const fallbackMetadata = {
-            name: formattedFileName,
-            mimeType: file.type || 'application/octet-stream'
-          };
-          const fallbackMetaBlob = new Blob([
-            `--${boundary}\r\n`,
-            'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-            JSON.stringify(fallbackMetadata),
-            '\r\n'
-          ], { type: 'application/json' });
-
-          const fallbackBody = new Blob([fallbackMetaBlob, fileHeaderBlob, file, closeBlob]);
-          const fallbackRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              'Content-Type': `multipart/related; boundary=${boundary}`
-            },
-            body: fallbackBody
-          });
-
-          if (fallbackRes.ok) {
-            uploadedFile = await fallbackRes.json();
-          } else {
-            console.warn("[Google Drive Root Upload Error]:", fallbackRes.status, await fallbackRes.text());
-          }
-        }
-
-        if (uploadedFile && uploadedFile.id) {
-          // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
-          fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ role: 'reader', type: 'anyone' })
-          }).catch(console.warn);
-
-          const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
-          const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
-          const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
-
-          if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
-
-          return {
-            success: true,
-            isLocalFallback: false,
-            fileId: uploadedFile.id,
-            fileName: formattedFileName,
-            folderName: folderNameThai,
-            viewUrl: uploadedFile.webViewLink || directView,
-            directViewUrl: directView,
-            previewUrl: directPreview,
-            downloadUrl: downloadUrl,
-            thumbnailLink: uploadedFile.thumbnailLink || directView,
-            originalName: file.name,
-            size: file.size,
-            mimeType: file.type,
-            uploadedAt: new Date().toISOString()
-          };
-        }
-      } catch (err) {
-        console.warn("[OAuth Upload Error, trying fallbacks]:", err);
-      }
+    if (onProgress) onProgress({ status: 'checking', message: 'กำลังตรวจสอบสิทธิ์การเชื่อมต่อ Google Drive...' });
+    
+    const activeToken = this.getActiveToken();
+    
+    if (!activeToken) {
+      console.error("[Google Drive] ไม่พบ Token ที่ยังไม่หมดอายุ");
+      const err = new Error(
+        "ไม่สามารถอัปโหลดไฟล์เข้า Google Drive ได้\n\n" +
+        "สาเหตุ: สิทธิ์การเชื่อมต่อ Google Drive หมดอายุแล้ว\n\n" +
+        "วิธีแก้ไข: กรุณาแจ้งคุณครูผู้ดูแลระบบให้เข้าสู่ระบบ\nและกดปุ่ม 'เชื่อมต่อ Google Drive' อีกครั้ง\nจากนั้นลองส่งผลงานใหม่"
+      );
+      err.isTokenExpired = true;
+      throw err;
     }
 
     // =========================================================================
-    // วิธีที่ 2: อัปโหลดผ่านเซิร์ฟเวอร์ Backend (/api/upload)
+    // ขั้นตอนที่ 1: อัปโหลดผ่าน Google OAuth 2.0 (Binary Blob Multipart)
     // =========================================================================
+    if (onProgress) onProgress({ status: 'uploading', message: `กำลังส่ง "${formattedFileName}" เข้าโฟลเดอร์ ${folderNameThai}...` });
+
+    const settings = this.getSettings();
+    let folders = this.folderCache || settings.gdriveFolders;
+    if (!folders) {
+      try {
+        folders = await this.ensureDriveFolders();
+      } catch (folderErr) {
+        console.warn("[Folder Ensure Warning]:", folderErr);
+      }
+    }
+    const targetParentId = folders?.[folderKey] || folders?.mainFolderId || DEFAULT_PARENT_FOLDER_ID;
+
+    // สร้าง Multipart Request Body (Binary Blob)
+    const boundary = '-------ProjectEvalBoundary' + Date.now();
+    const metadata = {
+      name: formattedFileName,
+      mimeType: file.type || 'application/octet-stream'
+    };
+    if (targetParentId) {
+      metadata.parents = [targetParentId];
+    }
+
+    const buildMultipartBody = (meta) => {
+      return new Blob([
+        `--${boundary}\r\n`,
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+        JSON.stringify(meta),
+        `\r\n--${boundary}\r\n`,
+        `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`,
+        file,
+        `\r\n--${boundary}--`
+      ]);
+    };
+
+    const uploadHeaders = {
+      Authorization: `Bearer ${activeToken}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`
+    };
+    const uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink,thumbnailLink';
+
+    let uploadedFile = null;
+
+    // ลองอัปโหลดเข้าโฟลเดอร์ปลายทาง
     try {
-      if (onProgress) onProgress({ status: 'uploading', message: `กำลังส่งไฟล์ "${formattedFileName}" ผ่านเซิร์ฟเวอร์ไปยัง Google Drive...` });
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', type);
-      formData.append('projectName', projectName);
-      formData.append('studentName', studentName);
-      formData.append('studentId', studentId);
-      formData.append('parentFolderId', DEFAULT_PARENT_FOLDER_ID);
-
-      const serverRes = await fetch('/api/upload', {
+      const res = await fetch(uploadUrl, {
         method: 'POST',
-        body: formData
+        headers: uploadHeaders,
+        body: buildMultipartBody(metadata)
       });
 
-      if (serverRes.ok) {
-        const serverData = await serverRes.json();
-        if (serverData.status === 'success' && serverData.fileId) {
-          if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${serverData.folderName || folderNameThai}" สำเร็จ!` });
+      if (res.ok) {
+        uploadedFile = await res.json();
+      } else {
+        const errStatus = res.status;
+        const errText = await res.text();
+        console.warn(`[Google Drive Upload Error]: ${errStatus}`, errText);
 
-          return {
-            success: true,
-            isLocalFallback: false,
-            fileId: serverData.fileId,
-            fileName: serverData.fileName || formattedFileName,
-            folderName: serverData.folderName || folderNameThai,
-            viewUrl: serverData.viewUrl,
-            directViewUrl: serverData.directViewUrl || serverData.viewUrl,
-            previewUrl: serverData.previewUrl || serverData.viewUrl,
-            downloadUrl: serverData.downloadUrl,
-            thumbnailLink: serverData.thumbnailLink || serverData.viewUrl,
-            originalName: file.name,
-            size: file.size,
-            mimeType: file.type,
-            uploadedAt: new Date().toISOString()
-          };
+        // 401 = Token หมดอายุจริงๆ (แม้ local expiry ยังไม่ถึง)
+        if (errStatus === 401 || errStatus === 403) {
+          // ลบ Token เก่าออก
+          this.accessToken = null;
+          this.tokenExpiresAt = 0;
+          try {
+            localStorage.removeItem('project_eval_gdrive_token');
+            localStorage.removeItem('project_eval_gdrive_token_exp');
+          } catch (e) {}
+
+          const tokenErr = new Error(
+            "สิทธิ์การเชื่อมต่อ Google Drive หมดอายุแล้ว\n\n" +
+            "กรุณาแจ้งคุณครูผู้ดูแลระบบให้กดปุ่ม 'เชื่อมต่อ Google Drive' อีกครั้ง\n" +
+            "จากนั้นลองส่งผลงานใหม่"
+          );
+          tokenErr.isTokenExpired = true;
+          throw tokenErr;
+        }
+
+        // ข้อผิดพลาดอื่น (เช่น parent folder ไม่มีสิทธิ์) → ลองอัปโหลดไม่ระบุ parent
+        if (errStatus === 404 || errStatus === 400) {
+          const noParentMeta = { name: formattedFileName, mimeType: file.type || 'application/octet-stream' };
+          const retryRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: uploadHeaders,
+            body: buildMultipartBody(noParentMeta)
+          });
+          if (retryRes.ok) {
+            uploadedFile = await retryRes.json();
+          } else {
+            console.error("[Google Drive Retry Failed]:", retryRes.status);
+          }
         }
       }
-    } catch (serverErr) {
-      console.warn("[Backend Upload Warning, trying local storage fallback]:", serverErr);
+    } catch (uploadErr) {
+      // ถ้าเป็น tokenExpired error ที่เราสร้างขึ้น → throw ต่อ
+      if (uploadErr.isTokenExpired) throw uploadErr;
+      console.warn("[Google Drive Upload Exception]:", uploadErr);
     }
 
     // =========================================================================
-    // วิธีที่ 3: Local Storage DataURL Fallback
+    // อัปโหลดสำเร็จ → ตั้งสิทธิ์ Reader แล้ว Return
     // =========================================================================
-    const { dataUrl } = await this.fileToBase64(file);
-    if (onProgress) onProgress({ status: 'done', message: `บันทึกไฟล์สำเร็จในเครื่อง (Local Storage)` });
+    if (uploadedFile && uploadedFile.id) {
+      // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
+      fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' })
+      }).catch(console.warn);
 
-    return {
-      success: true,
-      isLocalFallback: true,
-      fileId: `local_${Date.now()}`,
-      fileName: formattedFileName,
-      folderName: folderNameThai,
-      viewUrl: dataUrl,
-      directViewUrl: dataUrl,
-      downloadUrl: dataUrl,
-      thumbnailLink: dataUrl,
-      originalName: file.name,
-      size: file.size,
-      mimeType: file.type,
-      uploadedAt: new Date().toISOString()
-    };
+      const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
+      const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
+
+      if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
+
+      return {
+        success: true,
+        isLocalFallback: false,
+        fileId: uploadedFile.id,
+        fileName: formattedFileName,
+        folderName: folderNameThai,
+        viewUrl: uploadedFile.webViewLink || directView,
+        directViewUrl: directView,
+        previewUrl: directPreview,
+        downloadUrl: downloadUrl,
+        thumbnailLink: uploadedFile.thumbnailLink || directView,
+        originalName: file.name,
+        size: file.size,
+        mimeType: file.type,
+        uploadedAt: new Date().toISOString()
+      };
+    }
+
+    // =========================================================================
+    // ถ้ามาถึงตรงนี้ = อัปโหลดไม่สำเร็จเลย → แจ้ง Error
+    // =========================================================================
+    const finalErr = new Error(
+      "ไม่สามารถอัปโหลดไฟล์เข้า Google Drive ได้\n\n" +
+      "กรุณาลองอีกครั้ง หรือแจ้งคุณครูผู้ดูแลระบบให้เชื่อมต่อ Google Drive ใหม่"
+    );
+    finalErr.isUploadFailed = true;
+    throw finalErr;
   }
 
   async fileToBase64(file) {

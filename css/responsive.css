@@ -19,6 +19,10 @@
   .rubric-level-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .showcase-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -105,6 +109,12 @@
     width: 100%;
     padding: 10px 16px;
     font-size: 0.9rem;
+  }
+
+  /* Showcase Cards: 1 column on mobile */
+  .showcase-card-grid,
+  .row {
+    grid-template-columns: 1fr !important;
   }
 
   /* Form Elements for Smartphone */
@@ -194,31 +204,76 @@
 
   /* Modal Optimization for Mobile Devices */
   .modal-overlay {
-    padding: 8px;
+    padding: 0;
     align-items: flex-end;
   }
 
   .modal-box {
-    max-height: 92vh;
+    max-height: 95vh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     max-width: 100%;
+    width: 100%;
   }
 
   .modal-header {
     padding: 1rem;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .modal-header h3,
+  .modal-header h4 {
+    font-size: 1rem;
   }
 
   .modal-body {
     padding: 1rem;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(95vh - 130px);
   }
 
   .modal-footer {
     padding: 0.75rem 1rem;
     flex-wrap: wrap;
+    position: sticky;
+    bottom: 0;
+    background: white;
+    border-top: 1px solid var(--border-color);
+    z-index: 10;
   }
 
   .modal-footer .btn {
     flex: 1 1 auto;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+  }
+
+  /* Score Report Card Mobile */
+  .score-report-card {
+    padding: 1rem !important;
+  }
+
+  .score-display-huge {
+    font-size: 2rem !important;
+  }
+
+  .score-bar-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .score-bar-row .score-bar-label {
+    min-width: auto;
+    font-size: 0.78rem;
+  }
+
+  .badge-lg {
+    font-size: 0.85rem !important;
+    padding: 4px 10px !important;
   }
 
   /* Compact Score Tables on Mobile */
@@ -230,7 +285,12 @@
 
   .table-responsive {
     border-radius: var(--radius-md);
-    box-shadow: inset -5px 0 10px -5px rgba(0,0,0,0.1);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-responsive table {
+    min-width: 500px;
   }
 
   /* Members Profile Grid */
@@ -261,41 +321,122 @@
     width: 100% !important;
     min-width: 0 !important;
   }
+
+  /* Detail Section Mobile */
+  .detail-section {
+    margin-bottom: 1rem;
+  }
+
+  .detail-section h5 {
+    font-size: 0.95rem;
+  }
+
+  /* Footer Mobile */
+  .app-footer .d-flex {
+    flex-direction: column;
+    text-align: center;
+    gap: 4px;
+  }
+
+  /* Dropzone Mobile */
+  .dropzone {
+    padding: 1rem !important;
+  }
+
+  .dropzone-icon {
+    font-size: 2rem;
+  }
+
+  .dropzone-text {
+    font-size: 0.85rem;
+  }
 }
 
 @media (max-width: 480px) {
   .container {
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 
   .hero-title {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
+  }
+
+  .hero-desc {
+    font-size: 0.82rem;
   }
 
   .lock-title {
-    font-size: 1.4rem;
+    font-size: 1.3rem;
   }
 
   .lock-icon-circle {
-    width: 70px;
-    height: 70px;
-    font-size: 2rem;
-  }
-
-  .score-locked-banner {
-    padding: 2rem 1rem;
-  }
-
-  .podium-score {
+    width: 60px;
+    height: 60px;
     font-size: 1.8rem;
   }
 
+  .score-locked-banner {
+    padding: 1.5rem 0.75rem;
+  }
+
+  .podium-score {
+    font-size: 1.6rem;
+  }
+
   .toast-container {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
     max-width: none;
+  }
+
+  /* Extra small screen: force single col for all grids */
+  .form-row-2,
+  .form-row-3,
+  .form-row-4 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .nav-menu {
+    gap: 4px;
+  }
+
+  .nav-link {
+    font-size: 0.75rem;
+    padding: 5px 10px;
+  }
+
+  .nav-link span {
+    display: none;
+  }
+
+  .nav-link i {
+    margin: 0;
+  }
+
+  /* Score section ultra compact */
+  .score-display-huge {
+    font-size: 1.6rem !important;
+  }
+
+  .modal-body {
+    padding: 0.75rem;
+  }
+
+  .modal-header {
+    padding: 0.75rem;
+  }
+
+  /* Button compact */
+  .btn {
+    padding: 8px 14px;
+    font-size: 0.85rem;
+  }
+
+  .btn-lg {
+    padding: 10px 16px;
+    font-size: 0.9rem;
   }
 }
 
