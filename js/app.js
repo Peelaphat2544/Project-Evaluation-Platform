@@ -234,10 +234,10 @@ class App {
         } else if (isTeacher) {
           statusBadge = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> ประเมินแล้ว (${p.evaluation.totalScore}/20)</span>`;
         } else {
-          statusBadge = `<span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> อยู่ในระหว่างการพิจารณา</span>`;
+          statusBadge = `<span class="badge badge-success"><i class="fas fa-check-circle"></i> ประเมินแล้ว</span>`;
         }
       } else {
-        statusBadge = `<span class="badge badge-secondary"><i class="fas fa-clock"></i> รอรับการประเมิน</span>`;
+        statusBadge = `<span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> อยู่ในระหว่างการพิจารณา</span>`;
       }
 
       const first3Members = (p.members || []).slice(0, 3);
@@ -502,20 +502,32 @@ class App {
                 ` : ''}
               </div>
             ` : (
-              project.status === "evaluated" && evalData ? `
-                <div class="alert alert-info text-sm d-flex align-items-center gap-2">
-                  <i class="fas fa-hourglass-start fa-2x text-warning"></i>
+              isGraded ? `
+                <div class="alert alert-success text-sm d-flex align-items-center gap-3 p-3 rounded shadow-sm border-2">
+                  <div class="d-flex align-items-center justify-content-center bg-success text-white rounded-circle" style="width: 44px; height: 44px; min-width: 44px;">
+                    <i class="fas fa-check-circle fa-2x"></i>
+                  </div>
                   <div>
-                    <b>อยู่ในระหว่างการพิจารณา</b><br>
-                    ระบบยังไม่ได้ประกาศผลการประเมินอย่างเป็นทางการ กรุณารอประกาศจากทางรายวิชา
+                    <div class="font-bold text-base text-success mb-1">
+                      <i class="fas fa-award"></i> ได้รับการประเมินผลงานเรียบร้อยแล้ว
+                    </div>
+                    <div class="text-secondary">
+                      ผลงานโครงงานนี้ได้รับการตรวจและประเมินผลงานเรียบร้อยแล้ว (รายละเอียดคะแนนจะเปิดเผยอย่างเป็นทางการตามกำหนดการของรายวิชา)
+                    </div>
                   </div>
                 </div>
               ` : `
-                <div class="alert alert-warning text-sm d-flex align-items-center gap-2">
-                  <i class="fas fa-clock fa-2x text-warning"></i>
+                <div class="alert alert-warning text-sm d-flex align-items-center gap-3 p-3 rounded shadow-sm">
+                  <div class="d-flex align-items-center justify-content-center bg-warning text-white rounded-circle" style="width: 44px; height: 44px; min-width: 44px;">
+                    <i class="fas fa-hourglass-half fa-2x"></i>
+                  </div>
                   <div>
-                    <b>รอรับการประเมิน</b><br>
-                    ผลงานโครงงานนี้อยู่ในระหว่างการรอรับการประเมินจากคณะกรรมการ
+                    <div class="font-bold text-base text-warning mb-1">
+                      <i class="fas fa-clock"></i> อยู่ในระหว่างการพิจารณา / รอรับการประเมิน
+                    </div>
+                    <div class="text-secondary">
+                      ผลงานโครงงานนี้ส่งเข้าสู่ระบบแล้ว และอยู่ในขั้นตอนรอคณะกรรมการดำเนินการประเมินผลงาน
+                    </div>
                   </div>
                 </div>
               `

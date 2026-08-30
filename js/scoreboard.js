@@ -264,23 +264,30 @@ export class ScoreboardController {
       return `<p class="text-muted text-sm">ยังไม่มีโครงงานที่ส่งเข้ามาในขณะนี้</p>`;
     }
 
-    return projects.map(p => `
-      <div class="project-card-mini" data-id="${p.id}">
-        <div class="mini-header">
-          <span class="badge badge-sm ${p.type === 'invention' ? 'badge-primary' : 'badge-success'}">
-            ${p.type === 'invention' ? 'สิ่งประดิษฐ์' : 'แพลตฟอร์ม'}
-          </span>
-          <span class="text-xs text-muted">${p.classroom || p.gradeLevel}</span>
+    return projects.map(p => {
+      const isGraded = Boolean(p.status === "evaluated" && p.evaluation && p.evaluation.totalScore !== undefined);
+      return `
+        <div class="project-card-mini" data-id="${p.id}">
+          <div class="mini-header">
+            <span class="badge badge-sm ${p.type === 'invention' ? 'badge-primary' : 'badge-success'}">
+              ${p.type === 'invention' ? 'สิ่งประดิษฐ์' : 'แพลตฟอร์ม'}
+            </span>
+            <span class="text-xs text-muted">${p.classroom || p.gradeLevel}</span>
+          </div>
+          <div class="mini-title">${this.escapeHtml(p.title)}</div>
+          <div class="mini-members text-xs text-muted">
+            <i class="fas fa-users"></i> ${(p.members || []).map(m => m.fullName).join(", ")}
+          </div>
+          <div class="mini-status mt-2">
+            ${isGraded ? `
+              <span class="badge badge-success text-xs"><i class="fas fa-check-circle"></i> ได้รับการประเมินแล้ว</span>
+            ` : `
+              <span class="badge badge-warning text-xs"><i class="fas fa-hourglass-start"></i> อยู่ในระหว่างการพิจารณา</span>
+            `}
+          </div>
         </div>
-        <div class="mini-title">${this.escapeHtml(p.title)}</div>
-        <div class="mini-members text-xs text-muted">
-          <i class="fas fa-users"></i> ${(p.members || []).map(m => m.fullName).join(", ")}
-        </div>
-        <div class="mini-status mt-2">
-          <span class="badge badge-warning text-xs"><i class="fas fa-hourglass-start"></i> อยู่ในระหว่างการพิจารณา</span>
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
   }
 
   bindCardClicks(container) {
