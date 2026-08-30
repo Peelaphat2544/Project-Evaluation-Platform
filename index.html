@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ระบบประเมินผลงานโครงงาน - ออกแบบและวิทยาการคำนวณ 4 (ว30113)</title>
+  <meta name="description" content="ระบบสารสนเทศสำหรับการส่งและประเมินผลงานโครงงาน รายวิชา ออกแบบและวิทยาการคำนวณ 4 (ว30113)">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏆</text></svg>">
+
+  <!-- Google Fonts: Prompt & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Chart.js for Statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Firebase App & Firestore SDKs (Compat v9) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- Google API Client (GAPI) & Google Identity Services (GIS) for Google Drive -->
+  <script async defer src="https://apis.google.com/js/api.js"></script>
+  <script async defer src="https://accounts.google.com/gsi/client"></script>
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rubric.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+
+  <!-- ===================== TOP NAVIGATION BAR ===================== -->
+  <header class="app-navbar">
+    <div class="container navbar-inner">
+      <a href="#" class="brand-logo nav-link" data-view="showcase">
+        <div class="logo-icon-box">
+          <i class="fas fa-graduation-cap"></i>
+        </div>
+        <div class="brand-info">
+          <div class="brand-name">ระบบประเมินผลงานโครงงาน</div>
+          <div class="brand-sub app-subject-title">ออกแบบและวิทยาการคำนวณ 4 (ว30113)</div>
+        </div>
+      </a>
+
+      <nav class="nav-container">
+        <ul class="nav-menu">
+          <li>
+            <a href="#" class="nav-link active" data-view="showcase">
+              <i class="fas fa-th-large"></i> <span>รายการผลงาน</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-view="submit">
+              <i class="fas fa-file-upload"></i> <span>ส่งผลงานโครงงาน</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-view="scoreboard">
+              <i class="fas fa-award"></i> <span>ประกาศผลการประเมิน</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link nav-link-teacher" data-view="teacher">
+              <i class="fas fa-user-cog"></i> <span>ผู้ดูแลระบบ</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===================== MAIN CONTENT AREA ===================== -->
+  <main>
+    <!-- VIEW 1: SHOWCASE (หน้ารายการผลงานโครงงาน) -->
+    <section id="view-showcase" class="view-section active">
+      <!-- Hero Section -->
+      <div class="hero-section">
+        <div class="container">
+          <div class="hero-badge">
+            <i class="fas fa-book-open"></i> การจัดการเรียนรู้ รายวิชา ออกแบบและวิทยาการคำนวณ 4 (ว30113)
+          </div>
+          <h1 class="hero-title">
+            ระบบส่งและประเมินผลงานโครงงาน<br>
+            <span class="text-gradient app-subject-title">ออกแบบและวิทยาการคำนวณ 4 (ว30113)</span>
+          </h1>
+          <p class="hero-desc">
+            ระบบสารสนเทศสำหรับการส่งและประเมินผลงานโครงงานของนักเรียน เพื่อวัดและประเมินผลสัมฤทธิ์ทางการเรียนตามเกณฑ์มาตรฐานที่กำหนด
+          </p>
+          <div class="hero-actions">
+            <button type="button" class="btn btn-primary btn-lg" data-navigate="submit">
+              <i class="fas fa-paper-plane"></i> ส่งผลงานโครงงาน
+            </button>
+            <button type="button" class="btn btn-secondary btn-lg" data-navigate="scoreboard">
+              <i class="fas fa-clipboard-check"></i> ตรวจสอบผลการประเมิน
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-lg" id="btn-edit-with-passcode">
+              <i class="fas fa-key"></i> แก้ไขข้อมูลผลงานโครงงาน
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Showcase Search & Cards -->
+      <div class="container py-4 py-md-5">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+          <div>
+            <h3 class="mb-1"><i class="fas fa-layer-group text-primary"></i> ผลงานโครงงานทั้งหมด</h3>
+            <p class="text-sm text-muted">เลือกผลงานโครงงานเพื่อดูรายละเอียดการจัดทำและผลการประเมิน</p>
+          </div>
+
+          <div class="d-flex gap-2 flex-wrap w-100-mobile">
+            <div class="search-box flex-grow-mobile">
+              <input type="text" id="showcase-search" class="form-control" placeholder="ค้นหาชื่อโครงงาน, ผู้จัดทำ...">
+            </div>
+            <select id="showcase-filter-class" class="form-control auto-width-mobile">
+              <option value="all">ทุกห้องเรียน</option>
+            </select>
+            <select id="showcase-filter-type" class="form-control auto-width-mobile">
+              <option value="all">ทุกประเภท</option>
+              <option value="invention">สิ่งประดิษฐ์</option>
+              <option value="software">แพลตฟอร์ม/ซอฟต์แวร์</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Cards Grid -->
+        <div class="row" id="showcase-cards-container">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: SUBMIT / EDIT PROJECT (หน้าส่งผลงานโครงงาน) -->
+    <section id="view-submit" class="view-section">
+      <div class="container py-4 py-md-5" style="max-width: 960px;">
+        <div class="text-center mb-4">
+          <h2 id="form-heading-title" class="text-gradient mb-2">
+            <i class="fas fa-file-upload"></i> ส่งผลงานโครงงาน
+          </h2>
+          <p class="text-muted text-sm">
+            กรอกข้อมูลผลงานโครงงาน รายชื่อผู้จัดทำ และแนบเอกสารรายงานฉบับสมบูรณ์พร้อมสื่อประกอบการนำเสนอ
+          </p>
+        </div>
+
+        <form id="student-project-form" class="animate-fade-in">
+          <!-- หมวดที่ 1: ข้อมูลโครงงาน -->
+          <div class="card p-3 p-md-4 mb-4 form-card-box">
+            <h4 class="mb-3 text-primary"><i class="fas fa-info-circle"></i> 1. ข้อมูลผลงานโครงงาน</h4>
+            
+            <div class="form-group">
+              <label>ชื่อโครงงาน (ภาษาไทย) <span class="required">*</span></label>
+              <input type="text" id="proj-title" class="form-control" placeholder="เช่น ระบบรดน้ำพืชอัจฉริยะด้วย IoT" required>
+            </div>
+
+            <div class="form-group">
+              <label>ชื่อโครงงาน (ภาษาอังกฤษ)</label>
+              <input type="text" id="proj-title-en" class="form-control" placeholder="เช่น Smart IoT Plant Irrigation System">
+            </div>
+
+            <div class="form-row form-row-2">
+              <div class="form-group">
+                <label>ประเภทโครงงาน <span class="required">*</span></label>
+                <select id="proj-type" class="form-control" required>
+                  <option value="invention">สิ่งประดิษฐ์ (Hardware / Device / STEM)</option>
+                  <option value="software">แพลตฟอร์ม / ซอฟต์แวร์ (Web / Mobile / AI)</option>
+                </select>
+                <div id="proj-type-hint" class="text-xs text-primary mt-1">
+                  💡 เกณฑ์สิ่งประดิษฐ์: ประเมินชิ้นงานจริง ความทนทาน ความปลอดภัย และการประยุกต์ความรู้
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>ระดับชั้น / ห้องเรียน <span class="required">*</span></label>
+                <input type="text" id="proj-classroom" class="form-control" placeholder="เช่น ม.5/1 หรือ ม.4/3" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>บทคัดย่อและรายละเอียดโครงงานโดยสรุป</label>
+              <textarea id="proj-desc" class="form-control" rows="3" placeholder="อธิบายที่มา วัตถุประสงค์ และผลการดำเนินงานโดยย่อ..."></textarea>
+            </div>
+
+            <div class="form-row form-row-2">
+              <div class="form-group">
+                <label><i class="fas fa-video text-danger"></i> ลิงก์วิดีโอสาธิตการทำงาน / ผลงานจริง (ถ้ามี)</label>
+                <input type="url" id="proj-demo-url" class="form-control" placeholder="https://youtu.be/... หรือ https://...">
+              </div>
+
+              <div class="form-group">
+                <label><i class="fab fa-github text-dark"></i> ลิงก์ซอร์สโค้ด GitHub (ถ้ามี)</label>
+                <input type="url" id="proj-github-url" class="form-control" placeholder="https://github.com/username/project">
+              </div>
+            </div>
+          </div>
+
+          <!-- หมวดที่ 2: แนบไฟล์เอกสารรายงานและสื่อนำเสนอ -->
+          <div class="card p-3 p-md-4 mb-4 form-card-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h4 class="mb-0 text-dark"><i class="fas fa-paperclip text-primary"></i> 2. เอกสารรายงานและสื่อประกอบการนำเสนอ</h4>
+            </div>
+            <p class="text-xs text-muted mb-3">
+              แนบเอกสารรายงานฉบับสมบูรณ์ 5 บท และไฟล์สื่อประกอบการนำเสนอผลงาน
+            </p>
+
+            <div class="form-row form-row-2">
+              <!-- ไฟล์เล่มรายงาน -->
+              <div class="form-group">
+                <label><i class="fas fa-file-pdf text-danger"></i> รายงานโครงงานฉบับสมบูรณ์ (PDF / Word) <span class="required">*</span></label>
+                <div class="file-dropzone-box" id="dropzone-report">
+                  <i class="fas fa-file-upload fa-2x text-muted mb-2"></i>
+                  <div class="font-bold text-sm">เลือกไฟล์รายงานโครงงาน</div>
+                  <div class="text-xs text-muted">รองรับ PDF, DOCX (ขนาดไม่เกิน 50MB)</div>
+                  <input type="file" id="report-file-input" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                </div>
+                <div id="report-file-preview"></div>
+              </div>
+
+              <!-- ไฟล์สไลด์นำเสนอ -->
+              <div class="form-group">
+                <label><i class="fas fa-file-powerpoint text-warning"></i> สื่อประกอบการนำเสนอ (PPTX / PDF) <span class="required">*</span></label>
+                <div class="file-dropzone-box" id="dropzone-slide">
+                  <i class="fas fa-file-upload fa-2x text-muted mb-2"></i>
+                  <div class="font-bold text-sm">เลือกไฟล์สื่อนำเสนอ</div>
+                  <div class="text-xs text-muted">รองรับ PPTX, PDF (ขนาดไม่เกิน 50MB)</div>
+                  <input type="file" id="slide-file-input" accept=".pptx,.ppt,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf">
+                </div>
+                <div id="slide-file-preview"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- หมวดที่ 3: ข้อมูลสมาชิกในกลุ่มและรูปถ่าย -->
+          <div class="card p-3 p-md-4 mb-4 form-card-box">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <div>
+                <h4 class="mb-0 text-primary"><i class="fas fa-users"></i> 3. รายชื่อผู้จัดทำโครงงานและรูปประจำตัว</h4>
+                <p class="text-xs text-muted">ระบุข้อมูลสมาชิกและอัปโหลดรูปถ่ายประจำตัวหน้าตรง</p>
+              </div>
+              <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-member">
+                <i class="fas fa-user-plus"></i> เพิ่มผู้จัดทำโครงงาน
+              </button>
+            </div>
+
+            <!-- Dynamic Member Rows Container -->
+            <div id="members-container">
+              <!-- Member cards will be rendered by student.js -->
+            </div>
+          </div>
+
+          <!-- Submit Buttons -->
+          <div class="d-flex justify-content-between align-items-center gap-2 form-actions-mobile">
+            <button type="button" class="btn btn-secondary" id="btn-reset-form">
+              <i class="fas fa-undo"></i> ล้างข้อมูล
+            </button>
+            <button type="submit" class="btn btn-primary btn-lg" id="btn-submit-project">
+              <i class="fas fa-paper-plane"></i> บันทึกและส่งผลงานโครงงาน
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- VIEW 3: SCOREBOARD (หน้าประกาศผลการประเมิน) -->
+    <section id="view-scoreboard" class="view-section">
+      <div class="container py-4 py-md-5">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+          <div>
+            <h2 class="mb-1"><i class="fas fa-award text-warning"></i> ประกาศผลการประเมินโครงงาน</h2>
+            <p class="text-muted text-sm">การประเมินผลสัมฤทธิ์ทางการเรียน รายวิชา ออกแบบและวิทยาการคำนวณ 4 (ว30113)</p>
+          </div>
+
+          <!-- Search & Filter -->
+          <div class="d-flex gap-2 flex-wrap w-100-mobile">
+            <input type="text" id="scoreboard-search" class="form-control flex-grow-mobile" placeholder="ค้นหาโครงงาน/ผู้จัดทำ...">
+            <select id="scoreboard-filter-class" class="form-control auto-width-mobile">
+              <option value="all">ทุกห้องเรียน</option>
+            </select>
+            <select id="scoreboard-filter-type" class="form-control auto-width-mobile">
+              <option value="all">ทุกประเภท</option>
+              <option value="invention">สิ่งประดิษฐ์</option>
+              <option value="software">แพลตฟอร์ม</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Scoreboard Content Area (Switch between "อยู่ในระหว่างการพิจารณา" and Full Board) -->
+        <div id="scoreboard-content-area">
+          <!-- Rendered dynamically by scoreboard.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: TEACHER / ADMIN (หน้าผู้ดูแลระบบ) -->
+    <section id="view-teacher" class="view-section">
+      <div class="container py-4 py-md-5">
+        <!-- Section A: Login State (หากยังไม่ได้ล็อกอิน) -->
+        <div id="teacher-login-section" class="d-none">
+          <div class="card p-4 p-md-5 mx-auto text-center form-card-box" style="max-width: 440px;">
+            <div class="logo-icon-box mx-auto mb-3" style="width: 60px; height: 60px; font-size: 1.8rem;">
+              <i class="fas fa-user-shield"></i>
+            </div>
+            <h3 class="mb-1">เข้าสู่ระบบสำหรับผู้ดูแลระบบ</h3>
+            <p class="text-sm text-muted mb-4">เข้าสู่ระบบจัดการข้อมูลและประเมินผลการเรียนรู้</p>
+
+            <form id="teacher-login-form">
+              <div class="form-group text-start mb-3">
+                <label>รหัสผ่านผู้ดูแลระบบ (Password)</label>
+                <input type="password" id="teacher-pass-input" class="form-control text-center font-mono" placeholder="ระบุรหัสผ่าน (เริ่มต้น: admin)" required>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-lg w-100 font-bold">
+                <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Section B: Teacher Dashboard (เมื่อล็อกอินแล้ว) -->
+        <div id="teacher-dashboard-section" class="d-none animate-fade-in">
+          <!-- Top Bar Header -->
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div>
+              <span class="badge badge-dark mb-1"><i class="fas fa-user-cog"></i> ส่วนงานผู้ดูแลระบบและครูผู้สอน</span>
+              <h2 class="mb-0">ระบบบริหารจัดการและประเมินผลการเรียนรู้</h2>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-open-settings">
+                <i class="fas fa-cog"></i> ตั้งค่าระบบ
+              </button>
+              <button type="button" class="btn btn-outline-danger btn-sm" id="btn-teacher-logout">
+                <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+              </button>
+            </div>
+          </div>
+
+          <!-- Scoreboard Toggle Switch Card -->
+          <div class="card p-3 mb-4" id="toggle-scoreboard-container" style="background: white; border-radius: var(--radius-lg); border: 1.5px solid var(--border-color); box-shadow: var(--shadow-sm);">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+              <div class="d-flex align-items-center gap-3">
+                <div class="toggle-switch">
+                  <input type="checkbox" id="toggle-scoreboard-visibility">
+                  <span class="toggle-slider"></span>
+                </div>
+                <div>
+                  <div class="font-bold text-dark">การแสดงผลคะแนนในหน้านักเรียน (Score Visibility)</div>
+                  <div class="text-xs text-muted">หากปิดสวิตช์ หน้านักเรียนจะแสดงสถานะ <b>"อยู่ในระหว่างการพิจารณา"</b></div>
+                </div>
+              </div>
+              <div id="toggle-scoreboard-status-text">
+                <!-- Status badge updated by teacher.js -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats Overview Widgets -->
+          <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+              <div class="stat-card-widget">
+                <div class="stat-icon-circle bg-primary text-white">
+                  <i class="fas fa-folder-open"></i>
+                </div>
+                <div>
+                  <div class="stat-val" id="stat-total-projects">0</div>
+                  <div class="stat-lbl">โครงงานทั้งหมด</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6 col-md-3">
+              <div class="stat-card-widget">
+                <div class="stat-icon-circle bg-success text-white">
+                  <i class="fas fa-check-double"></i>
+                </div>
+                <div>
+                  <div class="stat-val" id="stat-evaluated-projects">0</div>
+                  <div class="stat-lbl">ประเมินแล้ว</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6 col-md-3">
+              <div class="stat-card-widget">
+                <div class="stat-icon-circle bg-warning text-white">
+                  <i class="fas fa-hourglass-half"></i>
+                </div>
+                <div>
+                  <div class="stat-val" id="stat-pending-projects">0</div>
+                  <div class="stat-lbl">รอการประเมิน</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6 col-md-3">
+              <div class="stat-card-widget">
+                <div class="stat-icon-circle bg-info text-white">
+                  <i class="fas fa-chart-line"></i>
+                </div>
+                <div>
+                  <div class="stat-val" id="stat-avg-score">0.0 / 20</div>
+                  <div class="stat-lbl">คะแนนเฉลี่ย</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart & Quick Summary -->
+          <div class="row mb-4">
+            <div class="col-lg-8 mb-3 mb-lg-0">
+              <div class="card p-3 h-100" style="background: white; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h5 class="font-bold mb-0 text-sm"><i class="fas fa-chart-bar text-primary"></i> แผนภูมิการกระจายผลการประเมิน (ระดับผลการเรียน)</h5>
+                </div>
+                <div style="height: 200px; position: relative;">
+                  <canvas id="chart-score-distribution"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-4">
+              <div class="card p-3 h-100" style="background: white; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+                <h5 class="font-bold mb-3 text-sm"><i class="fas fa-file-export text-primary"></i> ส่งออกข้อมูลและรายงาน</h5>
+                <div class="d-grid gap-2">
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="btn-export-csv">
+                    <i class="fas fa-file-excel text-success"></i> ส่งออกไฟล์ Excel / CSV
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-print-report">
+                    <i class="fas fa-print"></i> พิมพ์รายงานผลการประเมิน
+                  </button>
+                </div>
+                <div class="mt-3 p-2 bg-light rounded text-xs text-muted">
+                  <i class="fas fa-info-circle"></i> ไฟล์ CSV เข้ารหัสแบบ UTF-8 BOM รองรับภาษาไทยใน Microsoft Excel ได้สมบูรณ์
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Projects Management Table -->
+          <div class="scoreboard-main-card">
+            <div class="card-header-bar">
+              <div class="d-flex align-items-center gap-2">
+                <h4 class="mb-0 text-sm"><i class="fas fa-tasks text-primary"></i> รายการผลงานโครงงาน</h4>
+              </div>
+
+              <!-- Table Filters -->
+              <div class="d-flex gap-2 flex-wrap w-100-mobile">
+                <input type="text" id="teacher-search-input" class="form-control flex-grow-mobile" placeholder="ค้นหาชื่อโครงงาน/ผู้จัดทำ...">
+                <select id="teacher-filter-class" class="form-control auto-width-mobile">
+                  <option value="all">ทุกห้อง</option>
+                  <option value="ม.5/1">ม.5/1</option>
+                  <option value="ม.5/2">ม.5/2</option>
+                  <option value="ม.5/3">ม.5/3</option>
+                </select>
+                <select id="teacher-filter-type" class="form-control auto-width-mobile">
+                  <option value="all">ทุกประเภท</option>
+                  <option value="invention">สิ่งประดิษฐ์</option>
+                  <option value="software">แพลตฟอร์ม</option>
+                </select>
+                <select id="teacher-filter-status" class="form-control auto-width-mobile">
+                  <option value="all">ทุกสถานะ</option>
+                  <option value="pending">รอการประเมิน</option>
+                  <option value="evaluated">ประเมินแล้ว</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-custom">
+                <thead>
+                  <tr>
+                    <th class="text-center" width="50">#</th>
+                    <th>ชื่อโครงงาน / ประเภท</th>
+                    <th>ห้อง</th>
+                    <th>เอกสารแนบ</th>
+                    <th class="text-center" width="130">สถานะ</th>
+                    <th class="text-center" width="110">ระดับผล</th>
+                    <th class="text-center" width="150">การประเมิน</th>
+                  </tr>
+                </thead>
+                <tbody id="teacher-projects-tbody">
+                  <!-- Rendered dynamically by teacher.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="app-footer">
+    <div class="container">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <b>ระบบประเมินผลงานโครงงาน</b>
+        </div>
+        <div class="text-xs text-muted">
+          <span>กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี</span> | <span class="app-subject-title">ออกแบบและวิทยาการคำนวณ 4 (ว30113)</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- App Bootstrap JS -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

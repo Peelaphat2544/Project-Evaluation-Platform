@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment Variables
+.env
+
+# Google Cloud Secret Keys & Service Accounts
+*service-account*.json
+project-evaluation-platform-*.json
+client_secret_*.json
+
+# OS & Temp Files
+.DS_Store
+Thumbs.db
+*.log
