@@ -115,14 +115,15 @@
             <p class="text-sm text-muted">เลือกผลงานโครงงานเพื่อดูรายละเอียดการจัดทำและผลการประเมิน</p>
           </div>
 
-          <div class="d-flex gap-2 flex-wrap w-100-mobile">
-            <div class="search-box flex-grow-mobile">
-              <input type="text" id="showcase-search" class="form-control" placeholder="ค้นหาชื่อโครงงาน, ผู้จัดทำ...">
+          <div class="d-flex gap-2 flex-wrap w-100-mobile align-items-center">
+            <div class="search-input-wrapper flex-grow-mobile">
+              <i class="fas fa-search search-input-icon"></i>
+              <input type="text" id="showcase-search" class="form-control search-input-styled" placeholder="ค้นหาชื่อโครงงาน, รายชื่อผู้จัดทำ, คำอธิบายผลงาน...">
             </div>
-            <select id="showcase-filter-class" class="form-control auto-width-mobile">
+            <select id="showcase-filter-class" class="form-control auto-width-mobile select-styled">
               <option value="all">ทุกห้องเรียน</option>
             </select>
-            <select id="showcase-filter-type" class="form-control auto-width-mobile">
+            <select id="showcase-filter-type" class="form-control auto-width-mobile select-styled">
               <option value="all">ทุกประเภท</option>
               <option value="invention">สิ่งประดิษฐ์</option>
               <option value="software">แพลตฟอร์ม/ซอฟต์แวร์</option>
@@ -277,12 +278,15 @@
           </div>
 
           <!-- Search & Filter -->
-          <div class="d-flex gap-2 flex-wrap w-100-mobile">
-            <input type="text" id="scoreboard-search" class="form-control flex-grow-mobile" placeholder="ค้นหาโครงงาน/ผู้จัดทำ...">
-            <select id="scoreboard-filter-class" class="form-control auto-width-mobile">
+          <div class="d-flex gap-2 flex-wrap w-100-mobile align-items-center">
+            <div class="search-input-wrapper flex-grow-mobile" style="min-width: 320px; width: 360px;">
+              <i class="fas fa-search search-input-icon"></i>
+              <input type="text" id="scoreboard-search" class="form-control search-input-styled" placeholder="ค้นหาโครงงาน, รายชื่อผู้จัดทำ...">
+            </div>
+            <select id="scoreboard-filter-class" class="form-control auto-width-mobile select-styled">
               <option value="all">ทุกห้องเรียน</option>
             </select>
-            <select id="scoreboard-filter-type" class="form-control auto-width-mobile">
+            <select id="scoreboard-filter-type" class="form-control auto-width-mobile select-styled">
               <option value="all">ทุกประเภท</option>
               <option value="invention">สิ่งประดิษฐ์</option>
               <option value="software">แพลตฟอร์ม</option>
@@ -462,15 +466,18 @@
               </div>
 
               <!-- Table Filters -->
-              <div class="d-flex gap-2 flex-wrap w-100-mobile">
-                <input type="text" id="teacher-search-input" class="form-control flex-grow-mobile" placeholder="ค้นหาชื่อโครงงาน/ผู้จัดทำ...">
-                <select id="teacher-filter-class" class="form-control auto-width-mobile">
+              <div class="d-flex gap-2 flex-wrap w-100-mobile align-items-center">
+                <div class="search-input-wrapper flex-grow-mobile" style="min-width: 280px; width: 340px;">
+                  <i class="fas fa-search search-input-icon"></i>
+                  <input type="text" id="teacher-search-input" class="form-control search-input-styled" placeholder="ค้นหาชื่อโครงงาน, ผู้จัดทำ...">
+                </div>
+                <select id="teacher-filter-class" class="form-control auto-width-mobile select-styled">
                   <option value="all">ทุกห้อง</option>
                   <option value="ม.5/1">ม.5/1</option>
                   <option value="ม.5/2">ม.5/2</option>
                   <option value="ม.5/3">ม.5/3</option>
                 </select>
-                <select id="teacher-filter-type" class="form-control auto-width-mobile">
+                <select id="teacher-filter-type" class="form-control auto-width-mobile select-styled">
                   <option value="all">ทุกประเภท</option>
                   <option value="invention">สิ่งประดิษฐ์</option>
                   <option value="software">แพลตฟอร์ม</option>

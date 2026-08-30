@@ -215,6 +215,58 @@
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
 }
 
+/* Modern Search Box Components */
+.search-input-wrapper {
+  position: relative;
+  min-width: 380px;
+  width: 440px;
+  max-width: 100%;
+}
+
+.search-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 0.95rem;
+  pointer-events: none;
+  transition: color var(--transition-fast);
+  z-index: 2;
+}
+
+.search-input-styled {
+  padding-left: 42px !important;
+  padding-right: 16px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid #cbd5e1;
+  background: white;
+  font-size: 0.95rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: all var(--transition-fast);
+}
+
+.search-input-wrapper:focus-within .search-input-icon {
+  color: var(--primary);
+}
+
+.search-input-styled:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.14);
+}
+
+.select-styled {
+  height: 44px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid #cbd5e1;
+  font-size: 0.92rem;
+  padding: 0 14px;
+  background-color: white;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
 .form-row {
   display: grid;
   gap: 1rem;

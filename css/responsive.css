@@ -255,6 +255,12 @@
   .member-sub-text {
     font-size: 0.7rem;
   }
+
+  /* Search Box Mobile Full Width */
+  .search-input-wrapper {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
 }
 
 @media (max-width: 480px) {
