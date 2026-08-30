@@ -215,6 +215,8 @@ export class GoogleDriveService {
           if (this.updateSettings) {
             await this.updateSettings({
               gdriveOAuthConnected: true,
+              gdriveAccessToken: token,
+              gdriveTokenExp: this.tokenExpiresAt,
               gdriveFolders: folders
             });
           }
@@ -230,6 +232,22 @@ export class GoogleDriveService {
 
       this.tokenClient.requestAccessToken({ prompt });
     });
+  }
+
+  /**
+   * ซิงค์ Token และ Folder จาก Settings ใน Cloud
+   */
+  syncFromSettings(settings) {
+    if (!settings) return;
+    if (settings.gdriveAccessToken && (!this.accessToken || Date.now() >= this.tokenExpiresAt)) {
+      this.accessToken = settings.gdriveAccessToken;
+      this.tokenExpiresAt = parseInt(settings.gdriveTokenExp, 10) || (Date.now() + 3600 * 1000);
+      if (settings.gdriveFolders) this.folderCache = settings.gdriveFolders;
+      if (window.gapi?.client) {
+        window.gapi.client.setToken({ access_token: this.accessToken });
+      }
+      console.log("[Google Drive] ซิงค์ Active Token จาก Cloud เรียบร้อยแล้ว");
+    }
   }
 
   /**
@@ -354,8 +372,8 @@ export class GoogleDriveService {
     // =========================================================================
     // วิธีที่ 1: อัปโหลดผ่าน Google OAuth 2.0 (Multipart/Related มี Parents แน่นอน)
     // =========================================================================
-    const activeToken = this.accessToken || window.gapi?.client?.getToken()?.access_token;
-    if (activeToken && Date.now() < this.tokenExpiresAt) {
+    const activeToken = this.accessToken || settings.gdriveAccessToken || window.gapi?.client?.getToken()?.access_token || localStorage.getItem('project_eval_gdrive_token');
+    if (activeToken) {
       try {
         if (onProgress) onProgress({ status: 'uploading', message: `กำลังส่ง "${formattedFileName}" เข้าโฟลเดอร์ ${folderNameThai}...` });
 
@@ -395,42 +413,44 @@ export class GoogleDriveService {
           body: multipartRequestBody
         });
 
-        const uploadedFile = await uploadRes.json();
-        if (uploadedFile.id) {
-          // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
-          fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ role: 'reader', type: 'anyone' })
-          }).catch(console.warn);
+        if (uploadRes.ok) {
+          const uploadedFile = await uploadRes.json();
+          if (uploadedFile.id) {
+            // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
+            fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${activeToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ role: 'reader', type: 'anyone' })
+            }).catch(console.warn);
 
-          const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
-          const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
-          const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
+            const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
+            const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
+            const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
 
-          if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
+            if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
 
-          return {
-            success: true,
-            isLocalFallback: false,
-            fileId: uploadedFile.id,
-            fileName: formattedFileName,
-            folderName: folderNameThai,
-            viewUrl: uploadedFile.webViewLink || directView,
-            directViewUrl: directView,
-            previewUrl: directPreview,
-            downloadUrl: downloadUrl,
-            thumbnailLink: uploadedFile.thumbnailLink || directView,
-            originalName: file.name,
-            size: file.size,
-            mimeType: file.type,
-            uploadedAt: new Date().toISOString()
-          };
+            return {
+              success: true,
+              isLocalFallback: false,
+              fileId: uploadedFile.id,
+              fileName: formattedFileName,
+              folderName: folderNameThai,
+              viewUrl: uploadedFile.webViewLink || directView,
+              directViewUrl: directView,
+              previewUrl: directPreview,
+              downloadUrl: downloadUrl,
+              thumbnailLink: uploadedFile.thumbnailLink || directView,
+              originalName: file.name,
+              size: file.size,
+              mimeType: file.type,
+              uploadedAt: new Date().toISOString()
+            };
+          }
         } else {
-          console.warn("[OAuth Upload Warning]:", uploadedFile);
+          console.warn("[Google Drive Direct Upload Error]:", uploadRes.status, await uploadRes.text());
         }
       } catch (err) {
         console.warn("[OAuth Upload Error, trying fallbacks]:", err);

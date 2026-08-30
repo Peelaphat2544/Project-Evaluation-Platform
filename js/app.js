@@ -44,6 +44,7 @@ class App {
 
     // ฟังการเปลี่ยนแปลงข้อมูลใน Store เพื่อ re-render อัตโนมัติ
     this.store.subscribe(({ projects, settings }) => {
+      this.gdriveService.syncFromSettings(settings);
       this.updateHeader();
       if (this.currentView === "showcase") this.renderShowcase();
       if (this.currentView === "scoreboard") this.scoreboardController?.render();
