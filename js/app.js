@@ -555,7 +555,6 @@ class App {
       });
     });
   }
-  }
 
   // ===================== PASSCODE EDIT MODAL =====================
 
@@ -684,7 +683,7 @@ class App {
 
 // เริ่มต้นการทำงานของ Application อย่างปลอดภัย
 function bootstrapApp() {
-  if (!window.app) {
+  if (typeof window !== "undefined" && !window.app) {
     try {
       window.app = new App();
     } catch (err) {
@@ -693,8 +692,10 @@ function bootstrapApp() {
   }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootstrapApp);
-} else {
-  bootstrapApp();
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootstrapApp);
+  } else {
+    bootstrapApp();
+  }
 }
