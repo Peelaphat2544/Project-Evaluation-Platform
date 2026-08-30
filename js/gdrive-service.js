@@ -391,15 +391,8 @@ export class GoogleDriveService {
         }
         const targetParentId = folders?.[folderKey] || folders?.mainFolderId || DEFAULT_PARENT_FOLDER_ID;
 
-        // อ่านไฟล์เป็น Base64
-        const { base64 } = await this.fileToBase64(file);
-
-        // สร้าง Multipart Request Body สำหรับ Google Drive API v3
+        // สร้าง Binary Multipart Request Body (Blob) สำหรับ Google Drive API v3
         const boundary = '-------ProjectEvalBoundary' + Date.now();
-        const firstDelim = "--" + boundary + "\r\n";
-        const midDelim = "\r\n--" + boundary + "\r\n";
-        const closeDelim = "\r\n--" + boundary + "--";
-
         const metadata = {
           name: formattedFileName,
           mimeType: file.type || 'application/octet-stream'
@@ -408,63 +401,102 @@ export class GoogleDriveService {
           metadata.parents = [targetParentId];
         }
 
-        const multipartRequestBody =
-          firstDelim +
-          'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-          JSON.stringify(metadata) +
-          midDelim +
-          'Content-Type: ' + (file.type || 'application/octet-stream') + '\r\n' +
-          'Content-Transfer-Encoding: base64\r\n\r\n' +
-          base64 +
-          closeDelim;
+        const metadataBlob = new Blob([
+          `--${boundary}\r\n`,
+          'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+          JSON.stringify(metadata),
+          '\r\n'
+        ], { type: 'application/json' });
 
-        const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
+        const fileHeaderBlob = new Blob([
+          `--${boundary}\r\n`,
+          `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`
+        ], { type: 'text/plain' });
+
+        const closeBlob = new Blob([
+          `\r\n--${boundary}--`
+        ], { type: 'text/plain' });
+
+        const multipartBody = new Blob([metadataBlob, fileHeaderBlob, file, closeBlob]);
+
+        let uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${activeToken}`,
-            'Content-Type': `multipart/related; boundary="${boundary}"`
+            'Content-Type': `multipart/related; boundary=${boundary}`
           },
-          body: multipartRequestBody
+          body: multipartBody
         });
 
+        let uploadedFile = null;
         if (uploadRes.ok) {
-          const uploadedFile = await uploadRes.json();
-          if (uploadedFile.id) {
-            // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
-            fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${activeToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ role: 'reader', type: 'anyone' })
-            }).catch(console.warn);
-
-            const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
-            const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
-            const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
-
-            if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
-
-            return {
-              success: true,
-              isLocalFallback: false,
-              fileId: uploadedFile.id,
-              fileName: formattedFileName,
-              folderName: folderNameThai,
-              viewUrl: uploadedFile.webViewLink || directView,
-              directViewUrl: directView,
-              previewUrl: directPreview,
-              downloadUrl: downloadUrl,
-              thumbnailLink: uploadedFile.thumbnailLink || directView,
-              originalName: file.name,
-              size: file.size,
-              mimeType: file.type,
-              uploadedAt: new Date().toISOString()
-            };
-          }
+          uploadedFile = await uploadRes.json();
         } else {
-          console.warn("[Google Drive Direct Upload Error]:", uploadRes.status, await uploadRes.text());
+          const errText = await uploadRes.text();
+          console.warn("[Google Drive Upload Warning with parent]:", uploadRes.status, errText);
+
+          // ถ้าเกิดข้อผิดพลาดกับ Parent Folder ให้ลองอัปโหลดเข้า Root Drive โดยตรง
+          const fallbackMetadata = {
+            name: formattedFileName,
+            mimeType: file.type || 'application/octet-stream'
+          };
+          const fallbackMetaBlob = new Blob([
+            `--${boundary}\r\n`,
+            'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+            JSON.stringify(fallbackMetadata),
+            '\r\n'
+          ], { type: 'application/json' });
+
+          const fallbackBody = new Blob([fallbackMetaBlob, fileHeaderBlob, file, closeBlob]);
+          const fallbackRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${activeToken}`,
+              'Content-Type': `multipart/related; boundary=${boundary}`
+            },
+            body: fallbackBody
+          });
+
+          if (fallbackRes.ok) {
+            uploadedFile = await fallbackRes.json();
+          } else {
+            console.warn("[Google Drive Root Upload Error]:", fallbackRes.status, await fallbackRes.text());
+          }
+        }
+
+        if (uploadedFile && uploadedFile.id) {
+          // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
+          fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${activeToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ role: 'reader', type: 'anyone' })
+          }).catch(console.warn);
+
+          const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
+          const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
+          const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
+
+          if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
+
+          return {
+            success: true,
+            isLocalFallback: false,
+            fileId: uploadedFile.id,
+            fileName: formattedFileName,
+            folderName: folderNameThai,
+            viewUrl: uploadedFile.webViewLink || directView,
+            directViewUrl: directView,
+            previewUrl: directPreview,
+            downloadUrl: downloadUrl,
+            thumbnailLink: uploadedFile.thumbnailLink || directView,
+            originalName: file.name,
+            size: file.size,
+            mimeType: file.type,
+            uploadedAt: new Date().toISOString()
+          };
         }
       } catch (err) {
         console.warn("[OAuth Upload Error, trying fallbacks]:", err);
