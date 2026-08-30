@@ -823,7 +823,7 @@ export class TeacherController {
 
         <div class="modal-footer d-flex justify-content-between">
           <button type="button" class="btn btn-outline-danger btn-sm" id="btn-reset-sample-data">
-            <i class="fas fa-undo"></i> โหลดข้อมูลตัวอย่างเริ่มต้น
+            <i class="fas fa-trash-alt"></i> ล้างข้อมูลโครงงานทั้งหมด
           </button>
           <div class="d-flex gap-2">
             <button type="button" class="btn btn-secondary" id="btn-cancel-settings">ยกเลิก</button>
@@ -893,23 +893,23 @@ export class TeacherController {
       this.render();
     });
 
-    // โหลดข้อมูลตัวอย่าง
+    // ล้างข้อมูลโครงงานทั้งหมด
     modal.querySelector("#btn-reset-sample-data")?.addEventListener("click", async () => {
       const confirmed = await Popup.confirm({
-        title: "ยืนยันการรีเซ็ตข้อมูลตัวอย่าง",
-        message: "ต้องการโหลดข้อมูลโครงงานตัวอย่างเริ่มต้นใหม่หรือไม่?\n\n* ข้อมูลโครงงานปัจจุบันจะถูกแทนที่ด้วยชุดข้อมูลตัวอย่างเริ่มต้น",
-        type: "warning",
-        confirmText: "โหลดข้อมูลตัวอย่าง",
+        title: "ยืนยันการล้างข้อมูลโครงงาน",
+        message: "คุณต้องการล้างข้อมูลโครงงานทั้งหมดออกจากระบบใช่หรือไม่?\n\n* ข้อมูลโครงงานทั้งหมดจะถูกลบและไม่สามารถกู้คืนได้",
+        type: "danger",
+        confirmText: "ล้างข้อมูลทั้งหมด",
         cancelText: "ยกเลิก"
       });
 
       if (confirmed) {
-        this.store.resetToDefaultData();
+        this.store.clearAllProjects();
         modal.classList.remove("active");
         this.render();
         await Popup.alert({
-          title: "รีเซ็ตข้อมูลสำเร็จ",
-          message: "โหลดข้อมูลตัวอย่างเริ่มต้นเรียบร้อยแล้ว",
+          title: "ล้างข้อมูลสำเร็จ",
+          message: "ล้างข้อมูลโครงงานทั้งหมดในระบบเรียบร้อยแล้ว",
           type: "success"
         });
       }
