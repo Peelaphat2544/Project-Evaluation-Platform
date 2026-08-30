@@ -128,28 +128,52 @@ export class GoogleDriveService {
   }
 
   /**
-   * ดึงข้อมูลโปรไฟล์บัญชี Google จาก Token
+   * ดึงข้อมูลโปรไฟล์บัญชี Google จาก Token (รองรับทั้ง userinfo และ tokeninfo)
    */
   async fetchUserInfo(token) {
     const t = token || this.accessToken;
     if (!t) return null;
+
+    // วิธีที่ 1: Google OAuth2 v3 userinfo
     try {
       const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${t}` }
       });
       if (res.ok) {
         const info = await res.json();
-        this.userInfo = info;
-        return info;
+        if (info && info.email) {
+          this.userInfo = info;
+          return info;
+        }
       }
     } catch (e) {
-      console.warn("[Google Drive] fetchUserInfo error:", e);
+      console.warn("[Google Drive] fetchUserInfo v3 error:", e);
     }
-    return null;
+
+    // วิธีที่ 2: Google Tokeninfo (Fallback ให้ได้รับ Email เสมอ)
+    try {
+      const res2 = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${t}`);
+      if (res2.ok) {
+        const tokenInfo = await res2.json();
+        if (tokenInfo && tokenInfo.email) {
+          const info = {
+            email: tokenInfo.email,
+            name: tokenInfo.email.split('@')[0],
+            picture: ''
+          };
+          this.userInfo = info;
+          return info;
+        }
+      }
+    } catch (e) {
+      console.warn("[Google Drive] tokeninfo fallback error:", e);
+    }
+
+    return this.userInfo || null;
   }
 
   /**
-   * สั่งเปิดหน้าต่าง Authorize (Sign in with Google) พร้อมระบบตรวจสอบอีเมลผู้ดูแลระบบ
+   * สั่งเปิดหน้าต่าง Authorize (Sign in with Google) พร้อมระบบตรวจสอบโดเมน @psuwit.ac.th
    */
   requestDriveAuth(options = {}) {
     const { prompt = 'select_account', checkAdmin = false, allowedEmails = [] } = options;
@@ -163,24 +187,21 @@ export class GoogleDriveService {
         try {
           const userInfo = await this.fetchUserInfo(token);
 
-          if (checkAdmin && userInfo?.email) {
-            const userEmail = userInfo.email.trim().toLowerCase();
-            const whitelist = (allowedEmails.length > 0 ? allowedEmails : ["peelaphat@psuwit.ac.th"])
+          if (checkAdmin) {
+            const userEmail = (userInfo?.email || "").trim().toLowerCase();
+            const whitelist = (allowedEmails.length > 0 ? allowedEmails : ["peelaphat@psuwit.ac.th", "peelapatkaewkong@gmail.com"])
               .map(e => e.trim().toLowerCase());
 
             const isDomainMatch = userEmail.endsWith("@psuwit.ac.th");
             const isWhitelistMatch = whitelist.includes(userEmail);
 
-            if (!isDomainMatch || !isWhitelistMatch) {
-              // อีเมลไม่ได้รับอนุญาต หรือไม่ใช่โดเมน @psuwit.ac.th -> ลบ Token ทันที
+            // อนุญาตถ้าเป็นโดเมน @psuwit.ac.th หรืออยู่ใน Whitelist
+            const isAllowed = isDomainMatch || isWhitelistMatch;
+
+            if (!isAllowed) {
+              // อีเมลไม่ได้อยู่ภายใต้โดเมน @psuwit.ac.th -> ลบ Token ทันที
               this.signOut();
-              let errMessage = "";
-              if (!isDomainMatch) {
-                errMessage = `บัญชี "${userInfo.email}" ไม่ได้อยู่ภายใต้โดเมน @psuwit.ac.th\n\nระบบอนุญาตเฉพาะบัญชีอีเมล Google Workspace ของโรงเรียน (@psuwit.ac.th) เท่านั้น ไม่สามารถเข้าใช้งานได้`;
-              } else {
-                errMessage = `บัญชี Google "${userInfo.email}" ไม่มีสิทธิ์เข้าถึงส่วนงานผู้ดูแลระบบ\nกรุณาเข้าสู่ระบบด้วยอีเมลของคุณครูผู้ดูแลระบบเท่านั้น (${whitelist.join(', ')})`;
-              }
-              const err = new Error(errMessage);
+              const err = new Error(`บัญชี Google "${userInfo?.email || 'นี้'}" ไม่ได้อยู่ภายใต้โดเมน @psuwit.ac.th\n\nระบบอนุญาตเฉพาะบัญชีอีเมล Google Workspace ของโรงเรียน (@psuwit.ac.th) เท่านั้น`);
               err.isUnauthorized = true;
               err.isDomainInvalid = !isDomainMatch;
               err.email = userInfo.email;
