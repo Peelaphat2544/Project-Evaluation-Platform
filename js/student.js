@@ -125,14 +125,14 @@ export class StudentController {
       <div class="member-grid">
         <div class="member-photo-col">
           <div class="photo-uploader" id="photo-box-${memberIndex}">
-            <img src="${photoUrl || 'assets/avatar-placeholder.svg'}" class="avatar-preview ${!photoUrl ? 'd-none' : ''}" id="avatar-img-${memberIndex}" alt="รูปประจำตัว" onerror="this.src='assets/avatar-placeholder.svg'">
+            <img src="${photoUrl || 'assets/avatar-placeholder.svg'}" referrerpolicy="no-referrer" class="avatar-preview ${!photoUrl ? 'd-none' : ''}" id="avatar-img-${memberIndex}" alt="รูปประจำตัว" onerror="this.src='assets/avatar-placeholder.svg'">
             <div class="photo-placeholder ${photoUrl ? 'd-none' : ''}" id="avatar-placeholder-${memberIndex}">
               <i class="fas fa-camera"></i>
               <span>อัปโหลดรูป</span>
             </div>
-            <input type="file" accept="image/*" class="photo-file-input" id="photo-input-${memberIndex}" data-index="${memberIndex}">
+            <input type="file" accept=".png, .jpg, .jpeg, image/png, image/jpeg" class="photo-file-input" id="photo-input-${memberIndex}" data-index="${memberIndex}">
           </div>
-          <div class="photo-hint">รูปถ่ายหน้าตรง/ชุดนักเรียน</div>
+          <div class="photo-hint">เฉพาะไฟล์ .jpg หรือ .png เท่านั้น (ไม่เกิน 10 MB)</div>
         </div>
 
         <div class="member-fields-col">
@@ -221,6 +221,8 @@ export class StudentController {
           const idVal = memberEl.querySelector(".member-id")?.value || "";
           Popup.imagePreview({
             imageUrl: avatarImg.src,
+            fallbackUrl: data?.avatarBase64 || '',
+            fileId: data?.photoFileId || '',
             title: nameVal,
             subtitle: idVal ? `รหัสนักเรียน: ${idVal}` : ""
           });
@@ -232,8 +234,19 @@ export class StudentController {
       photoInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (file) {
+          // ตรวจสอบนามสกุลและ MIME Type ให้รับเฉพาะ png และ jpg / jpeg
+          const fileExt = (file.name.split('.').pop() || '').toLowerCase();
+          const validExts = ['png', 'jpg', 'jpeg'];
+          const validMimes = ['image/png', 'image/jpeg', 'image/jpg'];
+          if (!validExts.includes(fileExt) || (!validMimes.includes(file.type) && file.type !== '')) {
+            this.showToast("ระบบรับเฉพาะไฟล์รูปภาพ .png หรือ .jpg / .jpeg เท่านั้น", "error");
+            photoInput.value = "";
+            return;
+          }
+
           if (file.size > 10 * 1024 * 1024) {
             this.showToast("ขนาดรูปภาพต้องไม่เกิน 10 MB", "error");
+            photoInput.value = "";
             return;
           }
           const thumb = await this.createImageThumbnail(file);

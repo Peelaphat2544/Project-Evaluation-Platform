@@ -108,14 +108,22 @@ export class Popup {
    * แสดงหน้าต่างแสดงรูปภาพประจำตัวขนาดใหญ่ (Image Preview Lightbox)
    * @param {Object} options
    */
-  static imagePreview({ imageUrl, title = 'รูปภาพประจำตัว', subtitle = '' }) {
-    if (!imageUrl) return;
+  static imagePreview({ imageUrl, fallbackUrl = '', fileId = '', title = 'รูปภาพประจำตัว', subtitle = '' }) {
+    const initialSrc = imageUrl || fallbackUrl || 'assets/avatar-placeholder.svg';
     const modal = document.createElement('div');
     modal.className = 'modal-overlay active animate-fade-in';
     modal.style.zIndex = '10000';
 
+    // สกัด File ID อัตโนมัติหากไม่ได้ส่งเข้ามา
+    let effectiveFileId = fileId;
+    if (!effectiveFileId && typeof imageUrl === 'string') {
+      const match1 = imageUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      const match2 = imageUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      effectiveFileId = match1 ? match1[1] : (match2 ? match2[1] : '');
+    }
+
     modal.innerHTML = `
-      <div class="modal-box animate-scale-up text-center p-3" style="max-width: 480px; width: 92%; background: white; border-radius: var(--radius-xl); box-shadow: var(--shadow-xl);">
+      <div class="modal-box animate-scale-up text-center p-3" style="max-width: 520px; width: 92%; background: white; border-radius: var(--radius-xl); box-shadow: var(--shadow-xl);">
         <div class="d-flex justify-content-between align-items-center mb-2 px-1">
           <div class="text-start">
             <h4 class="mb-0 font-bold text-dark text-sm"><i class="fas fa-id-badge text-primary"></i> ${this.escapeHtml(title)}</h4>
@@ -123,8 +131,8 @@ export class Popup {
           </div>
           <button type="button" class="btn-close-modal" id="btn-close-image-modal" style="font-size: 1.5rem; line-height: 1; padding: 4px 8px; border: none; background: transparent; cursor: pointer;">&times;</button>
         </div>
-        <div class="image-preview-container my-2" style="max-height: 65vh; overflow: hidden; border-radius: var(--radius-lg); background: #f1f5f9; display: flex; align-items: center; justify-content: center; padding: 6px;">
-          <img src="${imageUrl}" alt="${this.escapeHtml(title)}" onerror="this.src='assets/avatar-placeholder.svg'" style="max-width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--radius-md); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <div class="image-preview-container my-2" style="min-height: 240px; max-height: 65vh; overflow: hidden; border-radius: var(--radius-lg); background: #f8fafc; display: flex; align-items: center; justify-content: center; padding: 8px; position: relative;">
+          <img class="preview-popup-img" src="${initialSrc}" referrerpolicy="no-referrer" alt="${this.escapeHtml(title)}" style="max-width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--radius-md); box-shadow: 0 4px 14px rgba(0,0,0,0.08); transition: opacity 0.2s ease;">
         </div>
         <div class="mt-3">
           <button type="button" class="btn btn-secondary btn-sm w-100" id="btn-close-image-footer">ปิดหน้าต่าง</button>
@@ -133,6 +141,27 @@ export class Popup {
     `;
 
     document.body.appendChild(modal);
+
+    const imgEl = modal.querySelector('.preview-popup-img');
+    let fallbackAttempt = 0;
+
+    if (imgEl) {
+      imgEl.onerror = () => {
+        fallbackAttempt++;
+        if (fallbackAttempt === 1 && effectiveFileId) {
+          // สลับไปดึง thumbnail จาก Google Drive
+          imgEl.src = `https://drive.google.com/thumbnail?id=${effectiveFileId}&sz=w1000`;
+        } else if (fallbackAttempt === 2 && fallbackUrl && imgEl.src !== fallbackUrl) {
+          // สลับไปดึงภาพ Base64 สำรอง
+          imgEl.src = fallbackUrl;
+        } else if (fallbackAttempt === 3 && effectiveFileId) {
+          // สลับไปดึงผ่าน CDN ทางเลือก
+          imgEl.src = `https://lh3.googleusercontent.com/u/0/d/${effectiveFileId}`;
+        } else {
+          imgEl.src = 'assets/avatar-placeholder.svg';
+        }
+      };
+    }
 
     const close = () => {
       modal.classList.remove('active');

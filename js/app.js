@@ -4,7 +4,7 @@
 
 import { FirebaseService } from "./firebase-service.js";
 import { AppStore } from "./store.js";
-import { GoogleDriveService, formatDriveImageUrl } from "./gdrive-service.js";
+import { GoogleDriveService, formatDriveImageUrl, extractDriveFileId } from "./gdrive-service.js";
 import { StudentController } from "./student.js";
 import { ScoreboardController } from "./scoreboard.js";
 import { TeacherController } from "./teacher.js";
@@ -51,6 +51,7 @@ class App {
       this.gdriveService.syncFromSettings(settings);
       this.updateHeader();
       if (this.currentView === "showcase") this.renderShowcase();
+      if (this.currentView === "rubrics") this.renderRubricsPage();
       if (this.currentView === "scoreboard") this.scoreboardController?.render();
       if (this.currentView === "teacher") this.teacherController?.render();
     });
@@ -94,7 +95,7 @@ class App {
     // ฟังการเปลี่ยนแปลงของ URL Hash (เช่น กดปุ่ม Back/Forward บน Browser)
     window.addEventListener("hashchange", () => {
       const hash = (window.location.hash || "").replace("#", "").trim();
-      if (hash && ["showcase", "submit", "scoreboard", "teacher", "gemini-eval"].includes(hash) && hash !== this.currentView) {
+      if (hash && ["showcase", "submit", "scoreboard", "teacher", "gemini-eval", "rubrics"].includes(hash) && hash !== this.currentView) {
         this.switchView(hash);
       }
     });
@@ -128,7 +129,7 @@ class App {
   }
 
   switchView(viewName) {
-    if (!["showcase", "submit", "scoreboard", "teacher", "gemini-eval"].includes(viewName)) {
+    if (!["showcase", "submit", "scoreboard", "teacher", "gemini-eval", "rubrics"].includes(viewName)) {
       viewName = "showcase";
     }
 
@@ -164,6 +165,7 @@ class App {
 
     // Refresh มุมมองตามหน้าที่เปิด
     if (viewName === "showcase") this.renderShowcase();
+    if (viewName === "rubrics") this.renderRubricsPage();
     if (viewName === "scoreboard") this.scoreboardController?.render();
     if (viewName === "teacher") this.teacherController?.render();
   }
@@ -261,8 +263,8 @@ class App {
             <div class="showcase-members-row">
               <div class="avatar-stack">
                 ${first3Members.map(m => `
-                  <div class="avatar-stack-item clickable-avatar" data-photo="${formatDriveImageUrl(m.photoUrl || m.avatarBase64 || '')}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
-                    <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" alt="${m.fullName}">
+                  <div class="avatar-stack-item clickable-avatar" data-photo="${formatDriveImageUrl(m.photoUrl || m.avatarBase64 || '')}" data-fallback="${this.escapeHtml(m.avatarBase64 || '')}" data-fileid="${m.photoFileId || ''}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
+                    <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" referrerpolicy="no-referrer" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" alt="${m.fullName}">
                   </div>
                 `).join("")}
               </div>
@@ -294,11 +296,18 @@ class App {
       item.addEventListener("click", (e) => {
         e.stopPropagation();
         const photo = item.dataset.photo;
+        const fallback = item.dataset.fallback;
+        const fileId = item.dataset.fileid;
         const name = item.dataset.name;
         const id = item.dataset.id;
-        if (photo) {
+        const thumbImg = item.querySelector("img");
+        const workingSrc = (thumbImg && thumbImg.complete && thumbImg.naturalWidth > 0 && !thumbImg.src.includes("placeholder")) ? thumbImg.currentSrc || thumbImg.src : null;
+
+        if (photo || fallback || workingSrc) {
           Popup.imagePreview({
-            imageUrl: photo,
+            imageUrl: workingSrc || photo,
+            fallbackUrl: fallback || workingSrc || '',
+            fileId: fileId,
             title: name || "รูปประจำตัว",
             subtitle: id ? `รหัสนักเรียน: ${id}` : ""
           });
@@ -419,7 +428,7 @@ class App {
             <div class="members-avatar-grid">
               ${(project.members || []).map((m, mIdx) => `
                 <div class="member-profile-card clickable-member-card" data-member-idx="${mIdx}" title="คลิกเพื่อดูรูปภาพขนาดใหญ่">
-                  <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" class="member-avatar-lg clickable-avatar" alt="${m.fullName}">
+                  <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" referrerpolicy="no-referrer" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" class="member-avatar-lg clickable-avatar" alt="${m.fullName}">
                   <div class="member-name-text">${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}</div>
                   <div class="member-sub-text">รหัส: ${m.studentId || '-'} | ห้อง: ${m.room || '-'} เลขที่: ${m.number || '-'}</div>
                   ${m.role ? `<div class="member-role-badge">${this.escapeHtml(m.role)}</div>` : ''}
@@ -572,9 +581,14 @@ class App {
       card.addEventListener("click", () => {
         const idx = parseInt(card.dataset.memberIdx, 10);
         const m = (project.members || [])[idx];
-        if (m && (m.photoUrl || m.avatarBase64)) {
+        if (m) {
+          const thumbImg = card.querySelector("img");
+          const workingSrc = (thumbImg && thumbImg.complete && thumbImg.naturalWidth > 0 && !thumbImg.src.includes("placeholder")) ? thumbImg.currentSrc || thumbImg.src : null;
+          const fileId = m.photoFileId || extractDriveFileId(m.photoUrl || '');
           Popup.imagePreview({
-            imageUrl: formatDriveImageUrl(m.photoUrl || m.avatarBase64, 1200),
+            imageUrl: workingSrc || formatDriveImageUrl(m.photoUrl || m.avatarBase64, 1200),
+            fallbackUrl: m.avatarBase64 || workingSrc || '',
+            fileId: fileId,
             title: `${m.title || ''}${m.fullName}`,
             subtitle: `รหัสนักเรียน: ${m.studentId || '-'} | ระดับชั้น: ${m.grade || project.gradeLevel || 'ม.5'} ห้อง ${m.room || '-'} เลขที่: ${m.number || '-'}`
           });
@@ -791,6 +805,85 @@ class App {
       toast.classList.add("toast-fade-out");
       setTimeout(() => toast.remove(), 300);
     }, 4000);
+  }
+
+  // ===================== RUBRICS VIEW PAGE =====================
+
+  renderRubricsPage(viewFilter = 'all') {
+    const container = document.getElementById("rubrics-page-categories-container");
+    if (!container) return;
+
+    const categories = this.store.getRubricCategories();
+    const isTeacher = this.store.isTeacherLoggedIn;
+
+    const teacherBtn = document.getElementById("btn-rubrics-page-edit-teacher");
+    if (teacherBtn) {
+      if (isTeacher) {
+        teacherBtn.classList.remove("d-none");
+        teacherBtn.onclick = () => this.teacherController?.openRubricsModal();
+      } else {
+        teacherBtn.classList.add("d-none");
+      }
+    }
+
+    container.innerHTML = categories.map((cat, idx) => {
+      const isProductTech = cat.id === "product_tech";
+      let levelsToRender = [];
+
+      if (isProductTech && cat.levels && !Array.isArray(cat.levels)) {
+        if (viewFilter === "all") {
+          levelsToRender = [
+            { typeName: "🤖 ด้านสิ่งประดิษฐ์ (Hardware / Device / STEM)", levels: cat.levels.invention || [] },
+            { typeName: "💻 ด้านแพลตฟอร์ม / ซอฟต์แวร์ (Web / Mobile / AI)", levels: cat.levels.software || [] }
+          ];
+        } else if (viewFilter === "invention") {
+          levelsToRender = [{ typeName: "🤖 ด้านสิ่งประดิษฐ์ (Invention)", levels: cat.levels.invention || [] }];
+        } else {
+          levelsToRender = [{ typeName: "💻 ด้านแพลตฟอร์ม / ซอฟต์แวร์ (Software)", levels: cat.levels.software || [] }];
+        }
+      } else {
+        levelsToRender = [{ typeName: "", levels: Array.isArray(cat.levels) ? cat.levels : [] }];
+      }
+
+      return `
+        <div class="rubric-view-card">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <h5 class="font-bold text-dark mb-1"><i class="fas fa-check-circle text-primary"></i> ${this.escapeHtml(cat.title)}</h5>
+              <p class="text-xs text-muted mb-0">${this.escapeHtml(cat.description || '')}</p>
+            </div>
+            <span class="badge badge-primary font-bold">คะแนนเต็ม ${cat.maxScore || 4} คะแนน</span>
+          </div>
+
+          ${levelsToRender.map(sec => `
+            ${sec.typeName ? `<div class="text-xs font-bold text-primary mt-3 mb-1"><i class="fas fa-layer-group"></i> ${sec.typeName}</div>` : ''}
+            <div class="rubric-levels-display-grid">
+              ${sec.levels.map(lvl => `
+                <div class="rubric-level-card level-${lvl.score}">
+                  <div class="rubric-level-badge">
+                    <i class="fas fa-circle"></i> ${lvl.label || `${lvl.score} คะแนน`}
+                  </div>
+                  <div class="rubric-level-desc-text">${this.escapeHtml(lvl.desc || '')}</div>
+                </div>
+              `).join("")}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }).join("");
+
+    // Bind Filter buttons
+    document.querySelectorAll(".rubrics-page-filter").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll(".rubrics-page-filter").forEach(b => {
+          b.classList.remove("btn-primary", "active");
+          b.classList.add("btn-outline-secondary");
+        });
+        btn.classList.add("btn-primary", "active");
+        btn.classList.remove("btn-outline-secondary");
+        this.renderRubricsPage(btn.dataset.filter);
+      };
+    });
   }
 
   getGradeBadgeClass(badgeStr) {

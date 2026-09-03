@@ -218,8 +218,8 @@ export class ScoreboardController {
     else if (rank === 3) rankBadge = `<span class="rank-badge rank-3-bg"><i class="fas fa-award"></i> 3</span>`;
 
     const memberAvatars = (project.members || []).slice(0, 3).map(m => `
-      <div class="avatar-stack-item clickable-avatar" data-photo="${formatDriveImageUrl(m.photoUrl || m.avatarBase64 || '')}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
-        <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" alt="${m.fullName}">
+      <div class="avatar-stack-item clickable-avatar" data-photo="${formatDriveImageUrl(m.photoUrl || m.avatarBase64 || '')}" data-fallback="${this.escapeHtml(m.avatarBase64 || '')}" data-fileid="${m.photoFileId || ''}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
+        <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" referrerpolicy="no-referrer" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" alt="${m.fullName}">
       </div>
     `).join("");
 
@@ -307,11 +307,18 @@ export class ScoreboardController {
       item.addEventListener("click", (e) => {
         e.stopPropagation();
         const photo = item.dataset.photo;
+        const fallback = item.dataset.fallback;
+        const fileId = item.dataset.fileid;
         const name = item.dataset.name;
         const id = item.dataset.id;
-        if (photo) {
+        const thumbImg = item.querySelector("img");
+        const workingSrc = (thumbImg && thumbImg.complete && thumbImg.naturalWidth > 0 && !thumbImg.src.includes("placeholder")) ? thumbImg.currentSrc || thumbImg.src : null;
+
+        if (photo || fallback || workingSrc) {
           Popup.imagePreview({
-            imageUrl: photo,
+            imageUrl: workingSrc || photo,
+            fallbackUrl: fallback || workingSrc || '',
+            fileId: fileId,
             title: name || "รูปประจำตัว",
             subtitle: id ? `รหัสนักเรียน: ${id}` : ""
           });

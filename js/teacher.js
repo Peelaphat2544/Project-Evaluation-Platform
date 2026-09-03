@@ -30,6 +30,9 @@ export class TeacherController {
     };
 
     this.chartInstance = null;
+    if (typeof window !== "undefined") {
+      window.openRubricsModal = () => this.openRubricsModal();
+    }
     this.init();
   }
 
@@ -1261,6 +1264,9 @@ export class TeacherController {
       // Close Modal
       modal.querySelector("#btn-close-rubrics")?.addEventListener("click", () => modal.classList.remove("active"));
       modal.querySelector("#btn-rubric-close-footer")?.addEventListener("click", () => modal.classList.remove("active"));
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) modal.classList.remove("active");
+      });
       modal.querySelector("#btn-rubric-cancel")?.addEventListener("click", () => {
         activeTab = "view";
         renderModal();
