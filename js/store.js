@@ -3,6 +3,9 @@
  * ทำงานร่วมกับ LocalStorage และ Firebase Firestore
  */
 
+import { RUBRIC_CATEGORIES } from "./rubric-data.js";
+
+
 const STORAGE_KEYS = {
   PROJECTS: "project_eval_projects_v2",
   SETTINGS: "project_eval_settings_v2",
@@ -291,5 +294,36 @@ export class AppStore {
 
   resetToDefaultData() {
     this.clearAllProjects();
+  }
+
+  // ===================== จัดการเกณฑ์การประเมิน (RUBRIC CATEGORIES) =====================
+
+  /**
+   * ดึงรายการเกณฑ์การประเมินปัจจุบัน (ถ้ามีการแก้ไขจะดึงจาก Settings ถ้าไม่มีจะใช้ค่าเริ่มต้น)
+   */
+  getRubricCategories() {
+    if (this.settings?.rubricCategories && Array.isArray(this.settings.rubricCategories) && this.settings.rubricCategories.length > 0) {
+      return this.settings.rubricCategories;
+    }
+    return RUBRIC_CATEGORIES;
+  }
+
+  /**
+   * บันทึกเกณฑ์การประเมินใหม่ลงใน Settings และ Firebase
+   */
+  async saveRubricCategories(newCategories) {
+    if (!Array.isArray(newCategories) || newCategories.length === 0) {
+      throw new Error("โครงสร้างเกณฑ์การประเมินต้องเป็น Array ที่มีข้อมูลอย่างน้อย 1 ด้าน");
+    }
+    await this.updateSettings({ rubricCategories: newCategories });
+    return this.getRubricCategories();
+  }
+
+  /**
+   * คืนค่าเกณฑ์การประเมินเริ่มต้น (5 ด้าน 20 คะแนนมาตรฐาน)
+   */
+  async resetRubricCategories() {
+    await this.updateSettings({ rubricCategories: null });
+    return RUBRIC_CATEGORIES;
   }
 }

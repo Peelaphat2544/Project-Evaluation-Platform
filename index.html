@@ -360,6 +360,12 @@
               <div id="admin-user-badge" class="badge badge-light d-flex align-items-center gap-2 p-2" style="background: white; border: 1px solid var(--border-color); font-size: 0.85rem;">
                 <i class="fas fa-user-circle text-primary"></i> <span id="admin-user-email">peelaphat@psuwit.ac.th</span>
               </div>
+              <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1" id="btn-gdrive-token-quick" title="คลิกเพื่อตรวจสอบหรือต่ออายุ Token Google Drive ทันที">
+                <i class="fab fa-google"></i> <span id="gdrive-quick-status-text">ตรวจสอบ Drive</span>
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-sm" id="btn-open-rubrics">
+                <i class="fas fa-clipboard-list"></i> เกณฑ์การประเมิน (Rubrics)
+              </button>
               <button type="button" class="btn btn-secondary btn-sm" id="btn-open-settings">
                 <i class="fas fa-cog"></i> ตั้งค่าระบบ
               </button>
@@ -551,7 +557,8 @@
             <div class="col-md-5">
               <label class="text-sm text-muted mb-1">โมเดล AI (Model)</label>
               <select id="gemini-model-select" class="form-control">
-                <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash</option>
+                <option value="gemini-3.8-flash" selected>Gemini 3.8 Flash (แนะนำล่าสุด)</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
                 <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
                 <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
                 <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>

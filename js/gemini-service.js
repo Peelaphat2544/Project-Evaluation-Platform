@@ -6,7 +6,7 @@
 export class GeminiService {
   constructor() {
     this.apiKey = localStorage.getItem('gemini_api_key') || '';
-    this.model = localStorage.getItem('gemini_model') || 'gemini-3.5-flash';
+    this.model = localStorage.getItem('gemini_model') || 'gemini-3.8-flash';
   }
 
   setApiKey(key) {
@@ -128,7 +128,7 @@ export class GeminiService {
 
     // ลำดับโมเดลที่จะลองเรียก (โมเดลหลัก -> โมเดลสำรองถ้าโมเดลหลักติด 503)
     const modelsToTry = [this.model];
-    const fallbackList = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+    const fallbackList = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
     for (const fb of fallbackList) {
       if (!modelsToTry.includes(fb)) {
         modelsToTry.push(fb);

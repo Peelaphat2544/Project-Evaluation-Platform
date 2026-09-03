@@ -117,7 +117,25 @@ export class TeacherController {
     if (settingsBtn) {
       settingsBtn.addEventListener("click", () => this.openSettingsModal());
     }
+
+    // ปุ่มเปิด Modal เกณฑ์การประเมิน (Rubrics)
+    const rubricsBtn = document.getElementById("btn-open-rubrics");
+    if (rubricsBtn) {
+      rubricsBtn.addEventListener("click", () => this.openRubricsModal());
+    }
+
+    // ปุ่มสถานะและต่ออายุ Token ด่วน
+    const quickTokenBtn = document.getElementById("btn-gdrive-token-quick");
+    if (quickTokenBtn) {
+      quickTokenBtn.addEventListener("click", () => this.handleQuickTokenRefresh());
+    }
+
+    // ตั้งเวลาตรวจสอบและพยายามต่ออายุ Token อัตโนมัติทุกๆ 1 นาที
+    if (!this.tokenCheckInterval) {
+      this.tokenCheckInterval = setInterval(() => this.updateTokenStatusUI(true), 60000);
+    }
   }
+
 
   async handleGoogleLogin() {
     const settings = this.store.getSettings();
@@ -216,7 +234,11 @@ export class TeacherController {
 
     // อัปเดตตารางรายการโครงงาน
     this.renderTable();
+
+    // อัปเดตสถานะ Google Drive Token
+    this.updateTokenStatusUI();
   }
+
 
   updateScoreToggleUI(isEnabled) {
     const toggle = document.getElementById("toggle-scoreboard-visibility");
@@ -582,16 +604,19 @@ export class TeacherController {
   }
 
   renderRubricMatrixRows(projectType) {
-    return RUBRIC_CATEGORIES.map(cat => {
+    const categories = this.store.getRubricCategories();
+    return categories.map(cat => {
       const currentScore = this.currentGradingScores[cat.id] || 0;
       
       // หา levels ตามประเภทโครงงาน (สำหรับ Product & Tech)
       let levels = [];
-      if (cat.id === "product_tech") {
-        levels = projectType === "software" ? cat.levels.software : cat.levels.invention;
-      } else {
+      if (cat.levels && !Array.isArray(cat.levels)) {
+        levels = projectType === "software" ? (cat.levels.software || []) : (cat.levels.invention || []);
+      } else if (Array.isArray(cat.levels)) {
         levels = cat.levels;
       }
+
+      const maxScore = cat.maxScore || 4;
 
       return `
         <div class="rubric-category-block mb-3">
@@ -601,7 +626,7 @@ export class TeacherController {
               <div class="text-xs text-muted">${cat.description}</div>
             </div>
             <div class="rubric-cat-score-badge" id="cat-score-badge-${cat.id}">
-              ${currentScore > 0 ? `${currentScore}/4 คะแนน` : '<span class="text-muted">ยังไม่ให้คะแนน</span>'}
+              ${currentScore > 0 ? `${currentScore}/${maxScore} คะแนน` : '<span class="text-muted">ยังไม่ให้คะแนน</span>'}
             </div>
           </div>
 
@@ -624,18 +649,23 @@ export class TeacherController {
     }).join("");
   }
 
+
   updateLiveRubricTotal() {
     let rawTotal = 0;
     let filledCount = 0;
+    const categories = this.store.getRubricCategories();
 
     Object.entries(this.currentGradingScores).forEach(([catId, score]) => {
       rawTotal += score;
       if (score > 0) filledCount++;
+      const catObj = categories.find(c => c.id === catId);
+      const maxScore = catObj?.maxScore || 4;
       const catBadge = document.getElementById(`cat-score-badge-${catId}`);
       if (catBadge) {
-        catBadge.innerHTML = score > 0 ? `<b>${score}</b> / 4 คะแนน` : '<span class="text-muted">ยังไม่ให้คะแนน</span>';
+        catBadge.innerHTML = score > 0 ? `<b>${score}</b> / ${maxScore} คะแนน` : '<span class="text-muted">ยังไม่ให้คะแนน</span>';
       }
     });
+
 
     const totalWithBonus = rawTotal + this.currentBonusScore;
 
@@ -914,6 +944,466 @@ export class TeacherController {
         });
       }
     });
+  }
+
+  // ===================== GOOGLE DRIVE TOKEN STATUS & QUICK REFRESH =====================
+
+  updateTokenStatusUI(isBackgroundCheck = false) {
+    if (!this.gdrive || !this.gdrive.getTokenStatus) return;
+    const status = this.gdrive.getTokenStatus();
+    const btn = document.getElementById("btn-gdrive-token-quick");
+    const textSpan = document.getElementById("gdrive-quick-status-text");
+
+    if (!btn || !textSpan) return;
+
+    btn.classList.remove("btn-outline-success", "btn-outline-warning", "btn-outline-danger");
+
+    if (!status.connected) {
+      btn.classList.add("btn-outline-danger");
+      textSpan.innerHTML = `<span class="text-danger font-bold"><i class="fas fa-exclamation-circle"></i> Drive หมดอายุ (คลิกต่ออายุ)</span>`;
+      btn.title = "สิทธิ์ Google Drive หมดอายุแล้ว นักเรียนจะไม่สามารถส่งไฟล์ได้ คลิกเพื่อต่ออายุทันที";
+    } else if (status.remainingMinutes < 15) {
+      btn.classList.add("btn-outline-warning");
+      textSpan.innerHTML = `<span class="text-warning font-bold"><i class="fas fa-clock"></i> Drive เหลือ ${status.remainingMinutes} น. (ต่ออายุ)</span>`;
+      btn.title = `Google Drive ใกล้หมดอายุ (เหลือ ${status.remainingMinutes} นาที) คลิกเพื่อต่ออายุล่วงหน้า`;
+
+      // ต่ออายุ Token อัตโนมัติในพื้นหลัง (Silent Refresh) ถ้าคุณครูกำลังใช้งานอยู่
+      if (isBackgroundCheck && this.store.isTeacherLoggedIn && this.gdrive.silentRefreshToken) {
+        this.gdrive.silentRefreshToken().then(token => {
+          if (token) this.updateTokenStatusUI(false);
+        });
+      }
+    } else {
+      btn.classList.add("btn-outline-success");
+      textSpan.innerHTML = `<i class="fas fa-check-circle text-success"></i> Drive เหลือ ${status.remainingMinutes} น.`;
+      btn.title = `Google Drive เชื่อมต่อปกติ (เหลืออายุการใช้งาน ${status.remainingMinutes} นาที)`;
+    }
+  }
+
+  async handleQuickTokenRefresh() {
+    const status = this.gdrive.getTokenStatus();
+    const settings = this.store.getSettings();
+    const allowed = settings.adminEmails || ["peelaphat@psuwit.ac.th"];
+
+    if (status.connected && status.remainingMinutes >= 15) {
+      const wantRenew = await Popup.confirm({
+        title: "สถานะการเชื่อมต่อ Google Drive",
+        message: `Google Drive ของคุณครูยังเชื่อมต่ออยู่ตามปกติ\n(เหลือเวลาการใช้งานอีก ${status.remainingMinutes} นาที)\n\nคุณต้องการต่ออายุ Token เพิ่มอีก 1 ชั่วโมงล่วงหน้าเลยหรือไม่?`,
+        confirmText: "ต่ออายุทันที",
+        cancelText: "ปิดหน้าต่าง",
+        type: "confirm"
+      });
+      if (!wantRenew) return;
+    }
+
+    try {
+      this.showToast("กำลังเปิดหน้าต่างยืนยันสิทธิ์ Google Drive...", "info");
+      const res = await this.gdrive.requestDriveAuth({
+        prompt: 'select_account',
+        checkAdmin: true,
+        allowedEmails: allowed
+      });
+      this.updateTokenStatusUI();
+      await Popup.alert({
+        title: "เชื่อมต่อสำเร็จ",
+        message: `ต่ออายุสิทธิ์ Google Drive เรียบร้อยแล้ว!\nระบบพร้อมรับการอัปโหลดไฟล์จากนักเรียนได้อีก 1 ชั่วโมง\n(บัญชี: ${res.userInfo?.email || 'Google'})`,
+        type: "success"
+      });
+    } catch (err) {
+      console.error("Quick token refresh error:", err);
+      await Popup.alert({
+        title: "ไม่สามารถต่ออายุได้",
+        message: err.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ Google Drive",
+        type: "error"
+      });
+    }
+  }
+
+  // ===================== RUBRICS MANAGEMENT MODAL =====================
+
+  openRubricsModal() {
+    let modal = document.getElementById("modal-rubrics-management");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "modal-rubrics-management";
+      modal.className = "modal-overlay active animate-fade-in";
+      document.body.appendChild(modal);
+    } else {
+      modal.classList.add("active");
+    }
+
+    let activeTab = "view"; // "view" | "edit"
+    let viewFilter = "all"; // "all" | "invention" | "software"
+    let editMode = "form"; // "form" | "json"
+    let categories = JSON.parse(JSON.stringify(this.store.getRubricCategories()));
+
+    const renderViewTab = () => {
+      return `
+        <!-- Filter Pills & Total Score Summary -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 p-3 bg-light rounded border">
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-xs font-bold text-muted"><i class="fas fa-filter"></i> เลือกแสดงตามประเภท:</span>
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn ${viewFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'} btn-sm filter-pill" data-filter="all">ดูทุกประเภท</button>
+              <button type="button" class="btn ${viewFilter === 'invention' ? 'btn-primary' : 'btn-outline-secondary'} btn-sm filter-pill" data-filter="invention"><i class="fas fa-microchip"></i> สิ่งประดิษฐ์</button>
+              <button type="button" class="btn ${viewFilter === 'software' ? 'btn-primary' : 'btn-outline-secondary'} btn-sm filter-pill" data-filter="software"><i class="fas fa-laptop-code"></i> แพลตฟอร์ม/ซอฟต์แวร์</button>
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge badge-success" style="font-size: 0.9rem;"><i class="fas fa-star"></i> คะแนนรวม 20 คะแนน (5 ด้าน ด้านละ 4 คะแนน)</span>
+          </div>
+        </div>
+
+        <!-- Category Cards List -->
+        <div class="rubric-categories-display">
+          ${categories.map((cat, idx) => {
+            const isProductTech = cat.id === "product_tech";
+            let levelsToRender = [];
+
+            if (isProductTech && cat.levels && !Array.isArray(cat.levels)) {
+              if (viewFilter === "all") {
+                levelsToRender = [
+                  { typeName: "🤖 ด้านสิ่งประดิษฐ์ (Hardware / Device / STEM)", levels: cat.levels.invention || [] },
+                  { typeName: "💻 ด้านแพลตฟอร์ม / ซอฟต์แวร์ (Web / Mobile / AI)", levels: cat.levels.software || [] }
+                ];
+              } else if (viewFilter === "invention") {
+                levelsToRender = [{ typeName: "🤖 ด้านสิ่งประดิษฐ์ (Invention)", levels: cat.levels.invention || [] }];
+              } else {
+                levelsToRender = [{ typeName: "💻 ด้านแพลตฟอร์ม / ซอฟต์แวร์ (Software)", levels: cat.levels.software || [] }];
+              }
+            } else {
+              levelsToRender = [{ typeName: "", levels: Array.isArray(cat.levels) ? cat.levels : [] }];
+            }
+
+            return `
+              <div class="rubric-view-card">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                  <div>
+                    <h5 class="font-bold text-dark mb-1"><i class="fas fa-check-circle text-primary"></i> ${this.escapeHtml(cat.title)}</h5>
+                    <p class="text-xs text-muted mb-0">${this.escapeHtml(cat.description || '')}</p>
+                  </div>
+                  <span class="badge badge-primary font-bold">คะแนนเต็ม ${cat.maxScore || 4} คะแนน</span>
+                </div>
+
+                ${levelsToRender.map(sec => `
+                  ${sec.typeName ? `<div class="text-xs font-bold text-primary mt-3 mb-1"><i class="fas fa-layer-group"></i> ${sec.typeName}</div>` : ''}
+                  <div class="rubric-levels-display-grid">
+                    ${sec.levels.map(lvl => `
+                      <div class="rubric-level-card level-${lvl.score}">
+                        <div class="rubric-level-badge">
+                          <i class="fas fa-circle"></i> ${lvl.label || `${lvl.score} คะแนน`}
+                        </div>
+                        <div class="rubric-level-desc-text">${this.escapeHtml(lvl.desc || '')}</div>
+                      </div>
+                    `).join("")}
+                  </div>
+                `).join("")}
+              </div>
+            `;
+          }).join("")}
+        </div>
+
+        <!-- Grade Cutoffs & Evaluator Guidance -->
+        <div class="row g-3 mt-2">
+          <div class="col-md-6">
+            <div class="card p-3 h-100 border bg-white shadow-sm rounded-lg">
+              <h6 class="font-bold text-dark mb-2"><i class="fas fa-award text-warning"></i> เกณฑ์การตัดระดับผลการเรียน (Grade Criteria)</h6>
+              <div class="table-responsive">
+                <table class="table table-sm text-xs mb-0">
+                  <thead>
+                    <tr>
+                      <th>ช่วงคะแนน</th>
+                      <th>ระดับผล</th>
+                      <th>ความหมาย</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><b>18 - 20 คะแนน</b></td><td><span class="badge badge-success">ดีเยี่ยม (A)</span></td><td>นวัตกรรมสมบูรณ์แบบ แก้ปัญหาได้จริง</td></tr>
+                    <tr><td><b>15 - 17 คะแนน</b></td><td><span class="badge badge-info">ดีมาก (B+)</span></td><td>ผลงานดี มีจุดที่พัฒนาต่อยอดได้</td></tr>
+                    <tr><td><b>13 - 14 คะแนน</b></td><td><span class="badge badge-primary">ดี (B)</span></td><td>ผ่านเกณฑ์มาตรฐานอย่างดี</td></tr>
+                    <tr><td><b>10 - 12 คะแนน</b></td><td><span class="badge badge-warning">ผ่านเกณฑ์ (C)</span></td><td>ใช้งานได้บางส่วน ต้องปรับปรุงเพิ่มเติม</td></tr>
+                    <tr><td><b>0 - 9 คะแนน</b></td><td><span class="badge badge-danger">ควรปรับปรุง (D)</span></td><td>ชิ้นงานยังไม่สมบูรณ์ ขาดองค์ประกอบหลัก</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card p-3 h-100 border bg-white shadow-sm rounded-lg">
+              <h6 class="font-bold text-primary mb-2"><i class="fas fa-lightbulb text-warning"></i> ข้อแนะนำสำหรับคุณครูผู้ประเมิน</h6>
+              <ul class="text-xs text-muted mb-0 ps-3" style="line-height: 1.7;">
+                <li><b>คะแนนพิเศษ (Bonus Points +1 หรือ +2):</b> อาจพิจารณาให้คะแนนพิเศษสำหรับทีมที่มีความพยายามสูงมาก (Resilience & Growth Mindset) ล้มเหลวหลายครั้งแต่ไม่ยอมแพ้</li>
+                <li><b>Constructive Feedback:</b> ควรระบุข้อเสนอแนะเชิงบวกและข้อควรปรับปรุงเพื่อให้นักเรียนนำไปต่อยอดได้จริง</li>
+                <li><b>การแสดงผลคะแนน:</b> หากปิดสวิตช์ Scoreboard ในหน้าหลัก นักเรียนจะยังไม่เห็นคะแนนจนกว่าการประเมินจะเสร็จสิ้นครบทุกกลุ่ม</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderEditTab = () => {
+      return `
+        <!-- Switch Edit Mode (Visual Form vs Raw JSON) -->
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+          <div class="alert alert-info py-2 px-3 text-xs mb-0 d-flex align-items-center gap-2">
+            <i class="fas fa-info-circle fa-lg"></i>
+            <span>คุณครูสามารถปรับแต่งข้อความเกณฑ์ คำอธิบาย และคะแนนเต็มในแต่ละด้านได้ ข้อมูลจะถูกบันทึกและซิงค์ทันที</span>
+          </div>
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn ${editMode === 'form' ? 'btn-primary' : 'btn-outline-secondary'} btn-sm" id="btn-edit-mode-form">
+              <i class="fas fa-th-list"></i> โหมดฟอร์ม (Visual Form)
+            </button>
+            <button type="button" class="btn ${editMode === 'json' ? 'btn-primary' : 'btn-outline-secondary'} btn-sm" id="btn-edit-mode-json">
+              <i class="fas fa-code"></i> โหมดโค้ด (JSON Editor)
+            </button>
+          </div>
+        </div>
+
+        ${editMode === 'form' ? renderEditForm() : renderEditJson()}
+      `;
+    };
+
+    const renderEditForm = () => {
+      return `
+        <div id="rubric-form-container">
+          ${categories.map((cat, catIdx) => {
+            const isProductTech = cat.id === "product_tech";
+            return `
+              <div class="rubric-edit-accordion">
+                <div class="rubric-edit-accordion-header" data-target="body-cat-${catIdx}">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="badge badge-primary">${catIdx + 1}</span>
+                    <b class="text-dark">${this.escapeHtml(cat.title)}</b>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="badge badge-light border">${cat.maxScore || 4} คะแนน</span>
+                    <i class="fas fa-chevron-down text-muted"></i>
+                  </div>
+                </div>
+
+                <div class="rubric-edit-accordion-body" id="body-cat-${catIdx}">
+                  <div class="row g-2 mb-3">
+                    <div class="col-md-9">
+                      <label class="text-xs font-bold text-muted mb-1">ชื่อด้านการประเมิน (Title)</label>
+                      <input type="text" class="form-control form-control-sm cat-title-input" data-cat-idx="${catIdx}" value="${this.escapeHtml(cat.title)}">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="text-xs font-bold text-muted mb-1">คะแนนเต็ม (Max Score)</label>
+                      <input type="number" min="1" max="20" class="form-control form-control-sm cat-maxscore-input" data-cat-idx="${catIdx}" value="${cat.maxScore || 4}">
+                    </div>
+                    <div class="col-12">
+                      <label class="text-xs font-bold text-muted mb-1">คำอธิบายภาพรวม (Description)</label>
+                      <input type="text" class="form-control form-control-sm cat-desc-input" data-cat-idx="${catIdx}" value="${this.escapeHtml(cat.description || '')}">
+                    </div>
+                  </div>
+
+                  <!-- Levels Editing -->
+                  ${isProductTech && cat.levels && !Array.isArray(cat.levels) ? `
+                    <div class="p-2 mb-3 bg-light rounded border">
+                      <b class="text-xs text-primary d-block mb-2"><i class="fas fa-microchip"></i> เกณฑ์สำหรับ: สิ่งประดิษฐ์ (Invention)</b>
+                      <div class="row g-2">
+                        ${(cat.levels.invention || []).map((lvl, lIdx) => `
+                          <div class="col-md-6 mb-2">
+                            <label class="text-xs font-bold mb-1">${lvl.score} คะแนน: ป้ายชื่อ (Label)</label>
+                            <input type="text" class="form-control form-control-sm mb-1 inv-lvl-label" data-cat-idx="${catIdx}" data-lvl-idx="${lIdx}" value="${this.escapeHtml(lvl.label)}">
+                            <label class="text-xs text-muted mb-1">คำอธิบายเกณฑ์</label>
+                            <textarea class="form-control form-control-sm inv-lvl-desc" rows="2" data-cat-idx="${catIdx}" data-lvl-idx="${lIdx}">${this.escapeHtml(lvl.desc)}</textarea>
+                          </div>
+                        `).join("")}
+                      </div>
+                    </div>
+
+                    <div class="p-2 bg-light rounded border">
+                      <b class="text-xs text-success d-block mb-2"><i class="fas fa-laptop-code"></i> เกณฑ์สำหรับ: แพลตฟอร์ม/ซอฟต์แวร์ (Software)</b>
+                      <div class="row g-2">
+                        ${(cat.levels.software || []).map((lvl, lIdx) => `
+                          <div class="col-md-6 mb-2">
+                            <label class="text-xs font-bold mb-1">${lvl.score} คะแนน: ป้ายชื่อ (Label)</label>
+                            <input type="text" class="form-control form-control-sm mb-1 soft-lvl-label" data-cat-idx="${catIdx}" data-lvl-idx="${lIdx}" value="${this.escapeHtml(lvl.label)}">
+                            <label class="text-xs text-muted mb-1">คำอธิบายเกณฑ์</label>
+                            <textarea class="form-control form-control-sm soft-lvl-desc" rows="2" data-cat-idx="${catIdx}" data-lvl-idx="${lIdx}">${this.escapeHtml(lvl.desc)}</textarea>
+                          </div>
+                        `).join("")}
+                      </div>
+                    </div>
+                  ` : `
+                    <div class="row g-2">
+                      ${(Array.isArray(cat.levels) ? cat.levels : []).map((lvl, lIdx) => `
+                        <div class="col-md-6 mb-2">
+                          <label class="text-xs font-bold mb-1">${lvl.score} คะแนน: ป้ายชื่อ (Label)</label>
+                          <input type="text" class="form-control form-control-sm mb-1 std-lvl-label" data-cat-idx="${catIdx}" data-lvl-idx="${lIdx}" value="${this.escapeHtml(lvl.label)}">
+                          <label class="text-xs text-muted mb-1">คำอธิบายเกณฑ์</label>
+                          <textarea class="form-control form-control-sm std-lvl-desc" rows="2" data-cat-idx="${catIdx}" data-lvl-idx="${lIdx}">${this.escapeHtml(lvl.desc)}</textarea>
+                        </div>
+                      `).join("")}
+                    </div>
+                  `}
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    };
+
+    const renderEditJson = () => {
+      return `
+        <div>
+          <label class="text-xs font-bold text-muted mb-1">JSON Schema ของเกณฑ์การประเมิน</label>
+          <textarea id="rubric-json-editor" class="form-control font-mono text-xs" rows="18" style="white-space: pre;">${JSON.stringify(categories, null, 2)}</textarea>
+          <small class="text-muted text-xs mt-1 d-block">ระวัง: กรุณาตรวจสอบวงเล็บปีกกาและเครื่องหมายจุลภาคให้ถูกต้องตามมาตรฐาน JSON</small>
+        </div>
+      `;
+    };
+
+    const bindModalEvents = () => {
+      // Close Modal
+      modal.querySelector("#btn-close-rubrics")?.addEventListener("click", () => modal.classList.remove("active"));
+      modal.querySelector("#btn-rubric-close-footer")?.addEventListener("click", () => modal.classList.remove("active"));
+      modal.querySelector("#btn-rubric-cancel")?.addEventListener("click", () => {
+        activeTab = "view";
+        renderModal();
+      });
+
+      // Switch Tab
+      modal.querySelector("#tab-btn-view")?.addEventListener("click", () => {
+        activeTab = "view";
+        renderModal();
+      });
+
+      modal.querySelector("#tab-btn-edit")?.addEventListener("click", () => {
+        activeTab = "edit";
+        renderModal();
+      });
+
+      // Filter in View Tab
+      modal.querySelectorAll(".filter-pill").forEach(btn => {
+        btn.addEventListener("click", () => {
+          viewFilter = btn.dataset.filter;
+          renderModal();
+        });
+      });
+
+      // Switch Edit Mode
+      modal.querySelector("#btn-edit-mode-form")?.addEventListener("click", () => {
+        editMode = "form";
+        renderModal();
+      });
+
+      modal.querySelector("#btn-edit-mode-json")?.addEventListener("click", () => {
+        editMode = "json";
+        renderModal();
+      });
+
+      // Toggle Accordion in Form
+      modal.querySelectorAll(".rubric-edit-accordion-header").forEach(header => {
+        header.addEventListener("click", () => {
+          const targetId = header.dataset.target;
+          const body = modal.querySelector(`#${targetId}`);
+          if (body) {
+            body.classList.toggle("d-none");
+            const icon = header.querySelector(".fa-chevron-down, .fa-chevron-up");
+            if (icon) {
+              icon.classList.toggle("fa-chevron-down");
+              icon.classList.toggle("fa-chevron-up");
+            }
+          }
+        });
+      });
+
+      // Save Rubrics Button
+      modal.querySelector("#btn-rubric-save")?.addEventListener("click", async () => {
+        let updated = null;
+
+        if (editMode === "json") {
+          const jsonText = modal.querySelector("#rubric-json-editor")?.value.trim();
+          try {
+            updated = JSON.parse(jsonText);
+          } catch (e) {
+            await Popup.alert({
+              title: "รูปแบบ JSON ไม่ถูกต้อง",
+              message: `เกิดข้อผิดพลาดในการแปลผล JSON: ${e.message}`,
+              type: "error"
+            });
+            return;
+          }
+        } else {
+          // Read from visual form
+          updated = JSON.parse(JSON.stringify(categories));
+          updated.forEach((cat, catIdx) => {
+            const titleInput = modal.querySelector(`.cat-title-input[data-cat-idx="${catIdx}"]`);
+            const descInput = modal.querySelector(`.cat-desc-input[data-cat-idx="${catIdx}"]`);
+            const maxScoreInput = modal.querySelector(`.cat-maxscore-input[data-cat-idx="${catIdx}"]`);
+
+            if (titleInput) cat.title = titleInput.value.trim();
+            if (descInput) cat.description = descInput.value.trim();
+            if (maxScoreInput) cat.maxScore = parseInt(maxScoreInput.value, 10) || 4;
+
+            if (cat.id === "product_tech" && cat.levels && !Array.isArray(cat.levels)) {
+              // Invention
+              (cat.levels.invention || []).forEach((lvl, lIdx) => {
+                const labelIn = modal.querySelector(`.inv-lvl-label[data-cat-idx="${catIdx}"][data-lvl-idx="${lIdx}"]`);
+                const descIn = modal.querySelector(`.inv-lvl-desc[data-cat-idx="${catIdx}"][data-lvl-idx="${lIdx}"]`);
+                if (labelIn) lvl.label = labelIn.value.trim();
+                if (descIn) lvl.desc = descIn.value.trim();
+              });
+              // Software
+              (cat.levels.software || []).forEach((lvl, lIdx) => {
+                const labelIn = modal.querySelector(`.soft-lvl-label[data-cat-idx="${catIdx}"][data-lvl-idx="${lIdx}"]`);
+                const descIn = modal.querySelector(`.soft-lvl-desc[data-cat-idx="${catIdx}"][data-lvl-idx="${lIdx}"]`);
+                if (labelIn) lvl.label = labelIn.value.trim();
+                if (descIn) lvl.desc = descIn.value.trim();
+              });
+            } else if (Array.isArray(cat.levels)) {
+              cat.levels.forEach((lvl, lIdx) => {
+                const labelIn = modal.querySelector(`.std-lvl-label[data-cat-idx="${catIdx}"][data-lvl-idx="${lIdx}"]`);
+                const descIn = modal.querySelector(`.std-lvl-desc[data-cat-idx="${catIdx}"][data-lvl-idx="${lIdx}"]`);
+                if (labelIn) lvl.label = labelIn.value.trim();
+                if (descIn) lvl.desc = descIn.value.trim();
+              });
+            }
+          });
+        }
+
+        try {
+          await this.store.saveRubricCategories(updated);
+          categories = JSON.parse(JSON.stringify(updated));
+          this.showToast("บันทึกเกณฑ์การประเมินโครงงานเรียบร้อยแล้ว", "success");
+          activeTab = "view";
+          renderModal();
+          this.render();
+        } catch (saveErr) {
+          await Popup.alert({
+            title: "ไม่สามารถบันทึกได้",
+            message: saveErr.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล",
+            type: "error"
+          });
+        }
+      });
+
+      // Reset Default Button
+      modal.querySelector("#btn-rubric-reset-default")?.addEventListener("click", async () => {
+        const confirmed = await Popup.confirm({
+          title: "คืนค่าเกณฑ์เริ่มต้น",
+          message: "คุณต้องการคืนค่าเกณฑ์การประเมินเป็นค่าเริ่มต้น (5 ด้าน 20 คะแนนมาตรฐานตามหลักสูตร) ใช่หรือไม่?",
+          type: "warning",
+          confirmText: "คืนค่าเริ่มต้น",
+          cancelText: "ยกเลิก"
+        });
+
+        if (confirmed) {
+          const defCats = await this.store.resetRubricCategories();
+          categories = JSON.parse(JSON.stringify(defCats));
+          this.showToast("คืนค่าเกณฑ์การประเมินเริ่มต้นเรียบร้อยแล้ว", "success");
+          activeTab = "view";
+          renderModal();
+          this.render();
+        }
+      });
+    };
+
+    renderModal();
   }
 
   getGradeBadgeClass(badgeStr) {

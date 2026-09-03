@@ -29,6 +29,65 @@ export const FOLDER_NAMES = {
   PHOTO: "รูปภาพสมาชิกและโครงงาน"
 };
 
+/**
+ * สกัด Google Drive File ID จาก URL รูปแบบต่างๆ หรือ Raw ID
+ * @param {string} urlOrId
+ * @returns {string} File ID (ถ้าไม่พบจะคืนค่าสตริงว่าง)
+ */
+export function extractDriveFileId(urlOrId) {
+  if (!urlOrId || typeof urlOrId !== 'string') return '';
+  const trimmed = urlOrId.trim();
+
+  // กรณีเป็น File ID ดิบๆ (ตัวอักษรและเครื่องหมายขีดล่าง/ขีดกลางยาวเกิน 20 ตัว)
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // รูปแบบ drive.google.com/file/d/{id}/...
+  const dMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (dMatch && dMatch[1]) return dMatch[1];
+
+  // รูปแบบ /d/{id}/...
+  const dShortMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (dShortMatch && dShortMatch[1]) return dShortMatch[1];
+
+  // รูปแบบ ?id={id} หรือ &id={id}
+  const idMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch && idMatch[1]) return idMatch[1];
+
+  // รูปแบบ googleusercontent.com/d/{id}
+  const lh3Match = trimmed.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (lh3Match && lh3Match[1]) return lh3Match[1];
+
+  return '';
+}
+
+/**
+ * แปลง URL ของ Google Drive หรือ File ID ให้เป็น Direct Image CDN URL ที่สามารถโหลดในแท็ก <img> ได้ 100%
+ * @param {string} urlOrId ลิงก์เดิมหรือ File ID
+ * @param {number} size ขนาดความกว้าง/สูงสูงสุดของภาพ (default: 800)
+ * @returns {string} Direct Image URL
+ */
+export function formatDriveImageUrl(urlOrId, size = 800) {
+  if (!urlOrId) return 'assets/avatar-placeholder.svg';
+  if (typeof urlOrId !== 'string') return 'assets/avatar-placeholder.svg';
+
+  const trimmed = urlOrId.trim();
+  // ถ้าเป็น Data URL (Base64), Blob หรือไฟล์ Local อยู่แล้ว ให้คืนค่าเดิม
+  if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:') || trimmed.startsWith('assets/')) {
+    return trimmed;
+  }
+
+  const fileId = extractDriveFileId(trimmed);
+  if (fileId) {
+    // ใช้ Google Image CDN (lh3.googleusercontent.com/d/{id}=s{size}) ซึ่งไม่ติดปัญหาคุกกี้และรวดเร็วที่สุด
+    return `https://lh3.googleusercontent.com/d/${fileId}=s${size}`;
+  }
+
+  return trimmed;
+}
+
+
 export class GoogleDriveService {
   constructor(getSettingsFn, updateSettingsFn) {
     this.getSettings = getSettingsFn;
@@ -338,6 +397,105 @@ export class GoogleDriveService {
   }
 
   /**
+   * คำนวณจำนวนวินาทีที่เหลือก่อน Google Drive Token จะหมดอายุ
+   * @returns {number} วินาทีที่เหลือ (0 หากหมดอายุแล้วหรือไม่พบ)
+   */
+  getTokenRemainingSeconds() {
+    const activeToken = this.getActiveToken();
+    if (!activeToken || !this.tokenExpiresAt) return 0;
+    return Math.max(0, Math.round((this.tokenExpiresAt - Date.now()) / 1000));
+  }
+
+  /**
+   * ตรวจสอบสถานะการเชื่อมต่อ Google Drive แบบสรุปสำหรับแสดงใน UI
+   * @returns {{ connected: boolean, remainingMinutes: number, text: string, badgeClass: string }}
+   */
+  getTokenStatus() {
+    const remainingSec = this.getTokenRemainingSeconds();
+    if (remainingSec <= 0) {
+      return {
+        connected: false,
+        remainingMinutes: 0,
+        text: 'สิทธิ์การเชื่อมต่อหมดอายุแล้ว (กรุณาต่ออายุ)',
+        badgeClass: 'badge-danger'
+      };
+    }
+
+    const minutes = Math.floor(remainingSec / 60);
+    if (minutes < 15) {
+      return {
+        connected: true,
+        remainingMinutes: minutes,
+        text: `ใกล้หมดอายุ (เหลือ ${minutes} นาที)`,
+        badgeClass: 'badge-warning'
+      };
+    }
+
+    return {
+      connected: true,
+      remainingMinutes: minutes,
+      text: `เชื่อมต่อ Google Drive แล้ว (เหลือ ${minutes} นาที)`,
+      badgeClass: 'badge-success'
+    };
+  }
+
+  /**
+   * ขอ Token ใหม่แบบเงียบ (Silent Token Refresh) โดยไม่ต้องมี Popup เด้ง
+   * ใช้เมื่อคุณครูเปิดใช้งานหน้าเว็บอยู่ เพื่อรักษาการเชื่อมต่อให้คงอยู่ตลอดเวลา
+   */
+  async silentRefreshToken() {
+    if (!this.tokenClient) {
+      console.warn("[Google Drive] tokenClient ยังไม่พร้อมสำหรับ Silent Refresh");
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const origSuccess = this.onAuthSuccess;
+      const origError = this.onAuthError;
+
+      const timeout = setTimeout(() => {
+        this.onAuthSuccess = origSuccess;
+        this.onAuthError = origError;
+        resolve(null);
+      }, 8000);
+
+      this.onAuthSuccess = async (token) => {
+        clearTimeout(timeout);
+        this.onAuthSuccess = origSuccess;
+        this.onAuthError = origError;
+
+        try {
+          if (this.updateSettings) {
+            await this.updateSettings({
+              gdriveOAuthConnected: true,
+              gdriveAccessToken: token,
+              gdriveTokenExp: this.tokenExpiresAt,
+              gdriveFolders: this.folderCache
+            });
+          }
+          console.log("[Google Drive] Silent Refresh สำเร็จ! Token ต่ออายุอีก 1 ชั่วโมง");
+        } catch (e) {
+          console.warn("[Google Drive] บันทึกผล Silent Refresh ไม่สำเร็จ:", e);
+        }
+
+        resolve(token);
+      };
+
+      this.onAuthError = (err) => {
+        clearTimeout(timeout);
+        this.onAuthSuccess = origSuccess;
+        this.onAuthError = origError;
+        console.warn("[Google Drive] Silent Refresh ไม่สำเร็จ (อาจต้อง Login ใหม่):", err);
+        resolve(null);
+      };
+
+      // prompt: '' ขอแบบเงียบโดยไม่ต้องเลือกบัญชีใหม่
+      this.tokenClient.requestAccessToken({ prompt: '' });
+    });
+  }
+
+
+  /**
    * ค้นหาหรือสร้าง 3 โฟลเดอร์ใน Google Drive ของคุณครู
    */
   async ensureDriveFolders() {
@@ -559,33 +717,42 @@ export class GoogleDriveService {
     // อัปโหลดสำเร็จ → ตั้งสิทธิ์ Reader แล้ว Return
     // =========================================================================
     if (uploadedFile && uploadedFile.id) {
-      // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link)
-      fetch(`https://www.googleapis.com/drive/v3/files/${uploadedFile.id}/permissions?supportsAllDrives=true`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${activeToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: 'reader', type: 'anyone' })
-      }).catch(console.warn);
+      const fileId = uploadedFile.id;
 
-      const directView = `https://drive.google.com/file/d/${uploadedFile.id}/view`;
-      const directPreview = `https://drive.google.com/file/d/${uploadedFile.id}/preview`;
-      const downloadUrl = `https://drive.google.com/uc?export=download&id=${uploadedFile.id}`;
+      // ตั้งค่าสิทธิ์ให้อ่านได้ (Reader for Anyone with Link) พร้อม await
+      try {
+        await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ role: 'reader', type: 'anyone' })
+        });
+      } catch (permErr) {
+        console.warn("[Google Drive] ไม่สามารถตั้งสิทธิ์ anyone ได้ทันที (อาจถูกจำกัดโดยนโยบายโดเมนของโรงเรียน):", permErr);
+      }
+
+      const directView = `https://drive.google.com/file/d/${fileId}/view`;
+      const directPreview = `https://drive.google.com/file/d/${fileId}/preview`;
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const imageCdnUrl = formatDriveImageUrl(fileId, 800);
+      const thumbnailLink = imageCdnUrl;
 
       if (onProgress) onProgress({ status: 'done', message: `บันทึก "${formattedFileName}" ลงโฟลเดอร์ "${folderNameThai}" สำเร็จ!` });
 
       return {
         success: true,
         isLocalFallback: false,
-        fileId: uploadedFile.id,
+        fileId: fileId,
         fileName: formattedFileName,
         folderName: folderNameThai,
         viewUrl: uploadedFile.webViewLink || directView,
         directViewUrl: directView,
         previewUrl: directPreview,
         downloadUrl: downloadUrl,
-        thumbnailLink: uploadedFile.thumbnailLink || directView,
+        thumbnailLink: thumbnailLink,
+        imageCdnUrl: imageCdnUrl,
         originalName: file.name,
         size: file.size,
         mimeType: file.type,

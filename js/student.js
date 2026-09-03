@@ -1,4 +1,6 @@
 import { Popup, UploadProgressModal } from "./popup-util.js";
+import { formatDriveImageUrl } from "./gdrive-service.js";
+
 
 /**
  * Student Controller: จัดการแบบฟอร์มส่งโครงงานและแก้ไขข้อมูลโดยนักเรียน
@@ -112,7 +114,7 @@ export class StudentController {
     const room = data?.room || "1";
     const number = data?.number || "";
     const role = data?.role || "";
-    const photoUrl = data?.photoUrl || "";
+    const photoUrl = formatDriveImageUrl(data?.photoUrl || data?.avatarBase64 || "");
 
     memberEl.innerHTML = `
       <div class="member-card-header">
@@ -123,7 +125,7 @@ export class StudentController {
       <div class="member-grid">
         <div class="member-photo-col">
           <div class="photo-uploader" id="photo-box-${memberIndex}">
-            <img src="${photoUrl || 'assets/avatar-placeholder.svg'}" class="avatar-preview ${!photoUrl ? 'd-none' : ''}" id="avatar-img-${memberIndex}" alt="รูปประจำตัว">
+            <img src="${photoUrl || 'assets/avatar-placeholder.svg'}" class="avatar-preview ${!photoUrl ? 'd-none' : ''}" id="avatar-img-${memberIndex}" alt="รูปประจำตัว" onerror="this.src='assets/avatar-placeholder.svg'">
             <div class="photo-placeholder ${photoUrl ? 'd-none' : ''}" id="avatar-placeholder-${memberIndex}">
               <i class="fas fa-camera"></i>
               <span>อัปโหลดรูป</span>
@@ -201,8 +203,12 @@ export class StudentController {
     const photoPlaceholder = memberEl.querySelector(`#avatar-placeholder-${memberIndex}`);
     const avatarImg = memberEl.querySelector(`#avatar-img-${memberIndex}`);
 
-    if (data?.photoUrl) {
-      this.memberPhotos[memberIndex] = { existingUrl: data.photoUrl };
+    if (data?.photoUrl || data?.avatarBase64) {
+      this.memberPhotos[memberIndex] = {
+        existingUrl: data.photoUrl,
+        existingFileId: data.photoFileId,
+        avatarBase64: data.avatarBase64
+      };
     }
 
     if (avatarImg) {
@@ -223,14 +229,15 @@ export class StudentController {
     }
 
     if (photoInput) {
-      photoInput.addEventListener("change", (e) => {
+      photoInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (file) {
           if (file.size > 10 * 1024 * 1024) {
             this.showToast("ขนาดรูปภาพต้องไม่เกิน 10 MB", "error");
             return;
           }
-          this.memberPhotos[memberIndex] = { file: file };
+          const thumb = await this.createImageThumbnail(file);
+          this.memberPhotos[memberIndex] = { file: file, avatarBase64: thumb };
           const reader = new FileReader();
           reader.onload = (ev) => {
             avatarImg.src = ev.target.result;
@@ -435,22 +442,36 @@ export class StudentController {
 
         if (photoInfo?.file) {
           this.progressModal.updateStep(3, currentMemberPercent, `กำลังอัปโหลดรูปถ่ายของ: ${m.fullName}...`);
-          const res = await this.gdrive.uploadFile({
-            file: photoInfo.file,
-            type: "photo",
-            projectName: title,
-            studentName: m.fullName,
-            studentId: m.studentId,
-            onProgress: (p) => this.progressModal.updateStep(3, currentMemberPercent, p.message)
-          });
-          m.photoUrl = res.thumbnailLink || res.viewUrl;
-          m.photoFileId = res.fileId;
+          try {
+            const res = await this.gdrive.uploadFile({
+              file: photoInfo.file,
+              type: "photo",
+              projectName: title,
+              studentName: m.fullName,
+              studentId: m.studentId,
+              onProgress: (p) => this.progressModal.updateStep(3, currentMemberPercent, p.message)
+            });
+            m.photoUrl = res.imageCdnUrl || res.thumbnailLink || formatDriveImageUrl(res.fileId, 800);
+            m.photoFileId = res.fileId;
+            m.avatarBase64 = photoInfo.avatarBase64 || "";
+          } catch (photoErr) {
+            console.warn(`[Google Drive Photo Warning]: ไม่สามารถอัปโหลดรูปเข้า Google Drive ได้สำหรับ ${m.fullName}:`, photoErr);
+            if (photoInfo.avatarBase64) {
+              m.photoUrl = photoInfo.avatarBase64;
+              m.photoFileId = "";
+              m.avatarBase64 = photoInfo.avatarBase64;
+            } else {
+              throw photoErr;
+            }
+          }
         } else if (photoInfo?.existingUrl) {
-          m.photoUrl = photoInfo.existingUrl;
+          m.photoUrl = formatDriveImageUrl(photoInfo.existingUrl);
           m.photoFileId = photoInfo.existingFileId || "";
+          m.avatarBase64 = photoInfo.avatarBase64 || "";
         } else {
           m.photoUrl = "";
           m.photoFileId = "";
+          m.avatarBase64 = "";
         }
         delete m.photoIndex;
       }
@@ -646,6 +667,47 @@ export class StudentController {
       // เพิ่มสมาชิกแถวแรกให้อัตโนมัติ
       this.addMemberRow();
     }
+  }
+
+  /**
+   * สร้างภาพ Thumbnail Base64 ย่อขนาดเล็ก (~5-10KB) เพื่อใช้เป็นแหล่งสำรองฉุกเฉิน
+   */
+  createImageThumbnail(file, maxWidth = 140, maxHeight = 140) {
+    return new Promise((resolve) => {
+      if (!file || !file.type.startsWith("image/")) {
+        resolve("");
+        return;
+      }
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.75));
+        };
+        img.onerror = () => resolve("");
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
   }
 
   escapeHtml(str) {

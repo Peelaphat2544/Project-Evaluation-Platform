@@ -5,6 +5,8 @@
 
 import { RUBRIC_CATEGORIES } from "./rubric-data.js";
 import { Popup } from "./popup-util.js";
+import { formatDriveImageUrl } from "./gdrive-service.js";
+
 
 export class ScoreboardController {
   constructor({ store, showToast, openProjectDetail }) {
@@ -216,8 +218,8 @@ export class ScoreboardController {
     else if (rank === 3) rankBadge = `<span class="rank-badge rank-3-bg"><i class="fas fa-award"></i> 3</span>`;
 
     const memberAvatars = (project.members || []).slice(0, 3).map(m => `
-      <div class="avatar-stack-item clickable-avatar" data-photo="${m.photoUrl || ''}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
-        <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" alt="${m.fullName}">
+      <div class="avatar-stack-item clickable-avatar" data-photo="${formatDriveImageUrl(m.photoUrl || m.avatarBase64 || '')}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
+        <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" alt="${m.fullName}">
       </div>
     `).join("");
 

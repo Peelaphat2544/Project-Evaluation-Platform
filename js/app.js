@@ -4,13 +4,14 @@
 
 import { FirebaseService } from "./firebase-service.js";
 import { AppStore } from "./store.js";
-import { GoogleDriveService } from "./gdrive-service.js";
+import { GoogleDriveService, formatDriveImageUrl } from "./gdrive-service.js";
 import { StudentController } from "./student.js";
 import { ScoreboardController } from "./scoreboard.js";
 import { TeacherController } from "./teacher.js";
 import { Popup } from "./popup-util.js";
 import { RUBRIC_CATEGORIES } from "./rubric-data.js";
 import { GeminiService } from "./gemini-service.js";
+
 
 class App {
   constructor() {
@@ -260,8 +261,8 @@ class App {
             <div class="showcase-members-row">
               <div class="avatar-stack">
                 ${first3Members.map(m => `
-                  <div class="avatar-stack-item clickable-avatar" data-photo="${m.photoUrl || ''}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
-                    <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" alt="${m.fullName}">
+                  <div class="avatar-stack-item clickable-avatar" data-photo="${formatDriveImageUrl(m.photoUrl || m.avatarBase64 || '')}" data-name="${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}" data-id="${m.studentId || ''}" title="คลิกดูรูป: ${m.title || ''}${m.fullName}">
+                    <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" alt="${m.fullName}">
                   </div>
                 `).join("")}
               </div>
@@ -418,7 +419,7 @@ class App {
             <div class="members-avatar-grid">
               ${(project.members || []).map((m, mIdx) => `
                 <div class="member-profile-card clickable-member-card" data-member-idx="${mIdx}" title="คลิกเพื่อดูรูปภาพขนาดใหญ่">
-                  <img src="${m.photoUrl || 'assets/avatar-placeholder.svg'}" class="member-avatar-lg clickable-avatar" alt="${m.fullName}">
+                  <img src="${formatDriveImageUrl(m.photoUrl || m.avatarBase64)}" data-fileid="${m.photoFileId || ''}" onerror="if (!this.dataset.tried && this.dataset.fileid) { this.dataset.tried='1'; this.src='https://drive.google.com/thumbnail?id='+this.dataset.fileid+'&sz=w500'; } else { this.src='assets/avatar-placeholder.svg'; }" class="member-avatar-lg clickable-avatar" alt="${m.fullName}">
                   <div class="member-name-text">${this.escapeHtml(m.title || '')}${this.escapeHtml(m.fullName)}</div>
                   <div class="member-sub-text">รหัส: ${m.studentId || '-'} | ห้อง: ${m.room || '-'} เลขที่: ${m.number || '-'}</div>
                   ${m.role ? `<div class="member-role-badge">${this.escapeHtml(m.role)}</div>` : ''}
@@ -476,16 +477,16 @@ class App {
                   </div>
                 </div>
 
-                <!-- แจกแจงคะแนน 5 ด้าน -->
+                <!-- แจกแจงคะแนน 5 ด้าน (ดึงเกณฑ์จากระบบ) -->
                 <div class="rubric-breakdown-list mb-3">
-                  ${RUBRIC_CATEGORIES.map(cat => {
+                  ${(this.store.getRubricCategories()).map(cat => {
                     const score = evalData.scores?.[cat.id] || 0;
-                    const percent = (score / 4) * 100;
+                    const percent = (score / (cat.maxScore || 4)) * 100;
                     return `
                       <div class="breakdown-item mb-2">
                         <div class="d-flex justify-content-between text-xs font-bold mb-1">
                           <span>${cat.title}</span>
-                          <span>${score} / 4</span>
+                          <span>${score} / ${cat.maxScore || 4}</span>
                         </div>
                         <div class="progress" style="height: 8px;">
                           <div class="progress-bar bg-primary" style="width: ${percent}%"></div>
@@ -571,9 +572,9 @@ class App {
       card.addEventListener("click", () => {
         const idx = parseInt(card.dataset.memberIdx, 10);
         const m = (project.members || [])[idx];
-        if (m && m.photoUrl) {
+        if (m && (m.photoUrl || m.avatarBase64)) {
           Popup.imagePreview({
-            imageUrl: m.photoUrl,
+            imageUrl: formatDriveImageUrl(m.photoUrl || m.avatarBase64, 1200),
             title: `${m.title || ''}${m.fullName}`,
             subtitle: `รหัสนักเรียน: ${m.studentId || '-'} | ระดับชั้น: ${m.grade || project.gradeLevel || 'ม.5'} ห้อง ${m.room || '-'} เลขที่: ${m.number || '-'}`
           });
